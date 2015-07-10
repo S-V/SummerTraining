@@ -1,0 +1,2 @@
+# SummerTraining
+tinkering with bgfx
