@@ -1,0 +1,7 @@
+.Build
+
+.Debug
+.DS_Store
+.git
+.svn
+tags
