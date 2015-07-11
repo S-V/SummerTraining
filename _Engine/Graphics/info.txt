@@ -1,0 +1,4 @@
+Graphics - a cross-platform renderer back-end.
+Contains low-level graphics stuff (common macros,types and functions).
+Graphics only provides a platform-independent access to the low-level graphics device.
+Graphics does not dictate how the higher-level scene management or rendering should be organized.

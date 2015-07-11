@@ -1,0 +1,1511 @@
+Point and Spot lights that do not cross camera's near plane are rendered as 3D shapes, with Z buffer test against scene enabled. This makes partially or fully occluded Point and Spot lights very cheap to render. Directional lights and Point/Spot lights that cross the near plane are rendered as fullscreen quads.
+
+* add comment:
+At runtime, load all shaders first, then load only 
+the necessary vertex buffers, index buffers, and 
+textures.
+
+from a single shader source file multiple shaders (shader variations) can be compiled.
+they are identified with a 16-bit key (unsigned integer number),
+(tells which defines are toggled).
+each shader has a unique 16-bit number.
+each shader in a cache is indexed with 32-bit number ((shaderNum<<16) |shaderVariation).
+
+vertex shaders are fixed, i.e. there are no vertex uber-shaders,
+only pixel shaders variations exist.
+
+
+TSerializer< TYPE >	serializer;
+			Do_ForAll( serializer );
+
+	// should be called before rendering
+	inline void UpdateShaderConstants( const rxRenderView& view )
+
+	
+//
+//	EGfxPipelineStage
+//
+enum EGfxPipelineStage
+{
+	RS_Prepare = 0,
+
+	RS_FillGBuffer,			// geometry stage, draw opaque surfaces only
+	RS_ApplyLighting,		// lighting stage
+	RS_DrawTranslucent,		// alpha stage
+
+	RS_FinalCombine,
+
+	RS_ApplyPostFx,			// post-processing
+
+	RS_DrawHUD,				// user interface
+
+	RS_DrawDebugData,		// performance HUD, debug texts
+};
+
+
+	for( UINT iMaterial = 0; iMaterial < GetMaxCapacity(); iMaterial++ )
+	{
+		rxMaterial * material = GetPtrByIndex( iMaterial );
+
+		while( material )
+			;
+	}
+
+	#ifdef __linux__
+unsigned _rotl ( unsigned val, int shift)
+{
+    register unsigned hibit;        /* non-zero means hi bit set */
+    register unsigned num = val;    /* number to rotate */
+
+    shift &= 0x1f;                  /* modulo 32 -- this will also make
+                                       negative shifts work */
+    while (shift--) {
+        hibit = num & 0x80000000;   /* get high bit */
+        num <<= 1;                  /* shift left one bit */
+        if (hibit)
+            num |= 1;               /* set lo bit if hi bit was set */
+    }
+
+    return num;
+}
+#endif
+
+/*
+===============
+FastChecksum
+===============
+*/
+
+int FastChecksum(char *buffer, int bytes)
+{
+   int   checksum = 0;
+
+   while( bytes-- )
+   {
+      checksum = _rotl(checksum, 4) ^ *(char *)buffer;
+      buffer++;
+   }
+
+   return checksum;
+}
+
+#if 0
+
+	//////////////////////////////// Phong model /////////////////////////////////////
+	// - Phong model has good properties for plastic and some metallic surfaces. 
+	// - Good for general use. Very cheap.
+
+	/*
+		N - surface normal
+		V - eye vector (vector from the surface point to the camera position)
+		L - light vector (vector from the surface point to the light source)
+		Exp - specular exponent
+	*/
+	half Phong(half3 N, half3 V, half3 L, half Exp)
+	{
+		half3 R = reflect(-L, N);					// 3 ALU
+		return pow( saturate( dot(V, R) ), Exp);	// 4
+		// 7 ALU
+	}
+#endif
+	// Holds generic input for BRDFs (directions and colors)
+// All directions are normalized and in world space
+struct BRDFIn
+{
+    float3 N;       // surfacce normal
+    float3 T;       // primary tangent
+    float3 B;       // secondary tangent 'binormal'
+    float3 L;       // vector to light source
+    float3 V;       // vector to viewer
+    float3 H;       // halfway vector
+    
+    float3 C_d;     // diffuse/material color
+    float3 C_s;     // specular color (if model supports it)
+    float3 C_e;     // color of perfect specular reflection (sampled from EnvMap)
+    float3 I_d;     // intensity of directional light
+    float3 I_a;     // intensity of ambient light
+    
+    float4 Params;  // some BRDF-specific params that can be sampled from textures
+};
+
+/*
+	N - surface normal
+	V - vector to viewer, eye vector (normalized vector from the surface point to the camera position)
+	L - vector to light source, light vector (normalized vector from the surface point to the light source)
+	specularPower - specular exponent, shininess (Phong exponent)
+*/
+float3 Phong_Specular(
+	in float3 N, in float3 L, in float3 V,
+	in float3 diffuseColor, in float3 specularColor, in float specularPower
+	)
+{
+	float NdotL = saturate(dot(N,L));
+	float3 R = reflect(-L, N);
+	float RdotL = saturate(dot(V,R));
+
+	float3 diffuseLighting = NdotL;
+	float3 specularLighting = pow(RdotL,specularPower);
+	
+	return diffuseColor * diffuseLighting + specularColor * specularLighting;
+}
+
+float PointLightAttenuation( in float NdotL, in float distance, in float invRadius )
+{
+	float attenuation = saturate( 1.0f - distance * invRadius ) * NdotL;
+	return attenuation;
+}
+	
+	
+	//---------------------------------------------------------------
+//		Common stuff for rendering light sources.
+//---------------------------------------------------------------
+
+DECLARE_CB( cbDynamicLight, 5 )
+{
+	float3	diffuseColor PACK( c0 );
+	float1	invRange PACK( c0.w );		// inverse of range of influence
+	float3	origin PACK( c1 );			// [local lights only] in view space (cone apex in view space for spotlights)
+	float3	lightVector PACK( c1 );		// [directional lights only] normalized lightVector in view space ( light vector = -1 * direction )
+	float4	specularColor PACK( c2 );
+	float1	cosTheta;		// cosine of half inner cone angle
+	float3	direction;		// normalized axis direction in view space
+	float1	cosPhi;			// cosine of half outer cone angle
+	float3	specularColor;
+	float1	range;
+	float4x4	worldViewProj;	// for transforming unit light shape
+};
+DECLARE_CB( cbPointLight, 5 )
+{
+	float3		diffuseColor;
+	float1		invRadius;
+	float3		origin;			// in view space
+	float1		radius;
+	float3		specularColor;
+	float1		_pad0;
+	float4x4	worldViewProj;	// for transforming unit light shape
+	// 76 bytes
+};
+DECLARE_CB( cbSpotLight, 5 )
+{
+	float3		diffuseColor;
+	float1		invRange;		// inverse of range of influence
+	float3		origin;			// cone apex in view space
+	float1		cosTheta;		// cosine of half inner cone angle
+	float3		direction;		// normalized axis direction in view space
+	float1		cosPhi;			// cosine of half outer cone angle
+	float3		specularColor;
+	float1		range;
+	float4x4	worldViewProj;	// for transforming unit light shape
+	// 128 bytes
+};
+
+	
+	// calls destructors, deletes each element
+	void DeletePointers()
+	{
+		const UINT num = GetSize();
+		for( UINT i = 0; i < num; i++ ) {
+			free_one( mData[i] );
+		}
+	}
+
+/*
+		Vec4D pointH( batchCenter, 1.0f );
+		pointH *= view.viewProjectionMatrix;
+		//FLOAT depth = maxf( pointH.z - batch.bounds.GetRadius(), 0.0f );
+		FLOAT depth = pointH.z * mxReciprocalEst( pointH.w );
+*/
+
+
+/*
+		D3DX11_IMAGE_INFO SrcInfo;
+		D3DX11GetImageInfoFromFile( pTextureFilename, NULL, &SrcInfo, NULL );
+*/
+		D3DX11_IMAGE_LOAD_INFO dili;
+        dili.BindFlags = D3DX11_DEFAULT;
+        dili.CpuAccessFlags = D3DX11_DEFAULT;
+        dili.Depth = D3DX11_DEFAULT;
+        dili.Filter = D3DX11_DEFAULT;
+        dili.FirstMipLevel = 0;
+        dili.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        dili.Height = D3DX11_DEFAULT;
+        dili.MipFilter = D3DX11_DEFAULT;
+        dili.MipLevels = 1;
+        dili.MiscFlags = D3DX11_DEFAULT;
+        dili.pSrcInfo = 0;//&SrcInfo;
+        dili.Usage = D3D11_USAGE_DEFAULT ;
+        dili.Width = D3DX11_DEFAULT;
+		
+
+	if(0)
+	{
+		imgLoadInfo.Width			= D3DX11_DEFAULT;
+		imgLoadInfo.Height			= D3DX11_DEFAULT;
+		imgLoadInfo.Depth			= D3DX11_DEFAULT;
+		imgLoadInfo.FirstMipLevel	= D3DX11_DEFAULT;
+		imgLoadInfo.MipLevels		= D3DX11_DEFAULT;
+		imgLoadInfo.Usage			= (D3D11_USAGE) D3DX11_DEFAULT;
+		imgLoadInfo.BindFlags		= D3DX11_DEFAULT;
+		imgLoadInfo.CpuAccessFlags	= D3DX11_DEFAULT;
+		imgLoadInfo.MiscFlags		= D3DX11_DEFAULT;
+		imgLoadInfo.Format			= DXGI_FORMAT_FROM_FILE;
+		imgLoadInfo.Filter			= D3DX11_FILTER_TRIANGLE;
+		imgLoadInfo.MipFilter		= D3DX11_FILTER_TRIANGLE;
+		imgLoadInfo.pSrcInfo		= NULL;
+	} else {
+	
+	
+	
+
+	String * vertexShaderName = NULL,
+	String * pixelShaderName = NULL,
+	String * geometryShaderName = NULL
+	
+	do {
+		end = lexer.GetFileOffset();
+		if( !lexer.ReadToken( &token ) ) {
+			break;
+		}
+		if( token.type == TT_PUNCTUATION ) {
+			if ( token.ToChar()[0] == '{' ) {
+				braceDepth++;
+			} else if ( token.ToChar()[0] == '}' ) {
+				braceDepth--;
+			}
+			if( token.ToChar()[0] == '$' ) {
+				const char * sectionOffset = source + lexer.GetFileOffset();
+				idToken	meaning;
+				lexer.ReadToken( &meaning );
+				if( 0 == meaning.Icmpn("VertexShader",sizeof("VertexShader")) )
+				{
+					memset( (char*)sectionOffset, ' ', sizeof("$VertexShader") );
+					if ( vertexShaderName ) {
+						*vertexShaderName = ;
+					}
+					continue;
+				}
+				else
+				if( 0 == meaning.Icmpn("PixelShader",sizeof("PixelShader")) )
+				{
+					memset( (char*)sectionOffset, ' ', sizeof("$PixelShader") );
+					continue;
+				}
+				else
+				if( 0 == meaning.Icmpn("GeometryShader",sizeof("GeometryShader")) )
+				{
+					memset( (char*)sectionOffset, ' ', sizeof("$GeometryShader") );
+					continue;
+				}
+				else {
+					ParseError("Invalid semantic: %s.\n",meaning);
+				}
+			}
+		}
+	} while( braceDepth );
+		
+		
+		
+		
+		
+			MaterialMap::Iterator iter( mMaterialsByName );
+	while( iter )
+	{
+		free_one( iter.Value() );
+		++iter;
+	}
+	mMaterialsByName.Clear();
+		
+		
+		
+		
+#include "RF.h"
+#pragma hdrstop
+
+struct CB_vs_data {
+	Matrix4	wvp;
+};
+	
+struct Globals
+{
+	CB_vs_data	cb_vs_data;	
+};
+
+static Globals	gVars;
+
+void TestScene_Init()
+{
+	FLOAT sizeX = 100.0f;
+	FLOAT sizeZ = 100.0f;
+	FLOAT height = 0.0f;
+
+	// Create vertex buffer.
+
+	enum { NUM_VERTICES = 24 };
+
+	rxVertex_Csg vertices[ NUM_VERTICES ] =
+	{
+		{ Vec3D(-sizeX,height,-sizeZ), Vec2D(0.0f,1.0f), Vec2D(1.0f,0.0f), Vec2D(0.0f,1.0f) },	// lower left
+		{ Vec3D(-sizeX,height,+sizeZ), Vec2D(0.0f,1.0f), Vec2D(1.0f,0.0f), Vec2D(0.0f,0.0f) },	// upper left
+		{ Vec3D(+sizeX,height,+sizeZ), Vec2D(0.0f,1.0f), Vec2D(1.0f,0.0f), Vec2D(1.0f,0.0f) },	// upper right
+		{ Vec3D(+sizeX,height,-sizeZ), Vec2D(0.0f,1.0f), Vec2D(1.0f,0.0f), Vec2D(1.0f,1.0f) },	// lower right
+	};
+
+	rxCsgModelDesc	desc;
+	desc.verts = vertices;
+	desc.numVerts = 4;
+
+//	rxCsgModel * mdl = renderer->resourceMgr.NewCsgModel(desc);
+
+
+
+	class MyRenderStage : public RenderStage
+	{
+		dxPtr< ID3D11InputLayout >		inputLayout;
+		dxPtr< ID3D11VertexShader >		vertexShader;
+		dxPtr< ID3D11PixelShader >		pixelShader;
+		
+		dxPtr< ID3D11Buffer >	VB;
+		dxPtr< ID3D11Buffer >	IB;
+		
+		dxPtr< ID3D11Buffer >	vs_const_buffer;
+
+	public:
+		MyRenderStage()
+		{
+			URI test_vsh("R:/shader_test/test.vsh");
+			URI test_gsh("R:/shader_test/test.gsh");
+			URI test_psh("R:/shader_test/test.psh");
+
+			dxPtr< ID3DBlob >	vsByteCode;
+
+			vertexShader = dxCreateVertexShaderFromFile( test_vsh.ToChar(), "mainVS", &vsByteCode.Ptr );
+			pixelShader = dxCreatePixelShaderFromFile( test_psh.ToChar(), "mainPS" );
+
+
+
+
+			// Create the Const Buffer
+
+			D3D11_BUFFER_DESC constant_buffer_desc;
+			mxZERO_OUT(constant_buffer_desc);
+			constant_buffer_desc.ByteWidth = sizeof(CB_vs_data);
+			constant_buffer_desc.Usage = D3D11_USAGE_DYNAMIC;
+			constant_buffer_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+			constant_buffer_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+			dxchk(gRenderer->device->CreateBuffer( &constant_buffer_desc, NULL, &vs_const_buffer.Ptr ));
+			dxSetDebugName( vs_const_buffer, "vs_const_buffer" );
+
+
+
+
+			// Create our vertex input layout
+
+			const D3D11_INPUT_ELEMENT_DESC layout[] =
+			{
+				{ "POSITION",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+				//	{ "NORMAL",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+				//	{ "TEXCOORD",  0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			};
+
+			dxchk( gRenderer->device->CreateInputLayout(
+				layout, mxCOUNT_OF( layout ),
+				vsByteCode->GetBufferPointer(),
+				vsByteCode->GetBufferSize(),
+				&inputLayout.Ptr
+				));
+			dxSetDebugName( inputLayout, "Primary" );
+
+			// Create vertex buffer
+			{
+				FLOAT sizeX = 100.0f;
+				FLOAT sizeZ = 100.0f;
+				FLOAT height = 0.0f;
+
+				Vec3D verts[3] = {
+					Vec3D(-sizeX,height,-sizeZ),	// lower left
+					Vec3D(-sizeX,height,+sizeZ),	// upper left
+					Vec3D(+sizeX,height,+sizeZ),	// upper right
+					//	Vec3D(+sizeX,height,-sizeZ),	// lower right
+				};
+
+				FLOAT size = 10;
+				verts[0].Set(-size,-size,0);
+				verts[1].Set(-size,+size,0);
+				verts[2].Set(+size,+size,0);
+
+
+				verts[0].Set( 0.0f, 0.5f, 0.5f );
+				verts[1].Set( 0.5f, -0.5f, 0.5f );
+				verts[2].Set( -0.5f, -0.5f, 0.5f );
+
+
+				verts[0].Set(0.0f,size,+size);
+				verts[1].Set(size,-size,+size);
+				verts[2].Set(-size,-size,+size);
+
+
+				D3D11_BUFFER_DESC bufferDesc;
+				mxZERO_OUT(bufferDesc);
+				bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+				bufferDesc.Usage = D3D11_USAGE_DEFAULT; // Not a dynamic buffer
+				bufferDesc.ByteWidth = sizeof(verts); // Buffer size
+				bufferDesc.CPUAccessFlags = 0;   // Indicates that CPU won't access this buffer at all after creation
+				bufferDesc.MiscFlags = 0;
+				bufferDesc.StructureByteStride = 0;
+
+				D3D11_SUBRESOURCE_DATA initData; // Initial data
+				mxZERO_OUT(initData);
+				initData.pSysMem = verts;   
+				dxchk(gRenderer->device->CreateBuffer( &bufferDesc, &initData, &VB.Ptr ));
+				dxSetDebugName( VB, "VB" );
+			}
+
+			{
+				UINT16 indices[3] = {0,1,2};
+				D3D11_BUFFER_DESC bufferDesc;
+				mxZERO_OUT(bufferDesc);
+				bufferDesc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+				bufferDesc.Usage = D3D11_USAGE_DEFAULT; // Not a dynamic buffer
+				bufferDesc.ByteWidth = sizeof(indices); // Buffer size
+				bufferDesc.CPUAccessFlags = 0;   // Indicates that CPU won't access this buffer at all after creation
+				bufferDesc.MiscFlags = 0;
+				bufferDesc.StructureByteStride = 0;
+
+				D3D11_SUBRESOURCE_DATA initData; // Initial data
+				mxZERO_OUT(initData);
+				initData.pSysMem = indices;
+				dxchk(gRenderer->device->CreateBuffer( &bufferDesc, &initData, &IB.Ptr ));
+				dxSetDebugName( IB, "IB" );
+			}
+		}
+
+		virtual ~MyRenderStage()
+		{
+		}
+
+		virtual void Render( const RenderView& view, Renderer& renderer )
+		{
+			Matrix4	worldMatrix(Matrix4::mat4_identity);
+			Matrix4	viewMatrix(Matrix4::mat4_identity);
+			Matrix4	projMatrix(Matrix4::mat4_identity);
+			
+			viewMatrix.BuildView(
+				Vec3D(0,10,-5),Vec3D(0,0,0)
+			);
+			
+			FLOAT aspect = (FLOAT)renderer.viewportWidth / (FLOAT)renderer.viewportHeight;
+			projMatrix.BuildPerspectiveLH(
+				DEG2RAD(90.0f),
+				aspect,
+				1.0f,100.0f
+			);
+			
+			Matrix4	wvp(worldMatrix*viewMatrix*projMatrix);
+			wvp.SetIdentity();
+		
+			// Per frame cb update
+			{
+				D3D11_MAPPED_SUBRESOURCE MappedResource;
+	
+				dxchk( renderer.immediateContext->Map(
+						vs_const_buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &MappedResource ) );
+	
+				CB_vs_data* pCB = ( CB_vs_data* )MappedResource.pData;
+	
+				memcpy( &pCB->wvp, &wvp, sizeof(wvp) );
+	
+				renderer.immediateContext->Unmap( vs_const_buffer, 0 );
+			}
+			
+			//renderer.immediateContext->UpdateSubresource(
+			//	vs_const_buffer,	// ID3D11Resource *pDstResource
+			//	0,	// UINT DstSubresource
+			//	NULL,	// const D3D11_BOX *pDstBox
+			//	&wvp,	// const void *pSrcData
+			//	0,	// UINT SrcRowPitch
+			//	0	// UINT SrcDepthPitch
+			//);
+
+
+
+
+		//	renderer.immediateContext->VSSetConstantBuffers( 0, 1, &vs_const_buffer.Ptr );
+		//	renderer.immediateContext->PSSetConstantBuffers( 0, 1, &vs_const_buffer.Ptr );
+
+
+		//	renderer.SetVertexShader(vertexShader);
+		//	renderer.SetPixelShader(pixelShader);
+			renderer.immediateContext->VSSetShader(
+				vertexShader,
+				NULL,	// ID3D11ClassInstance**
+				0	// NumClassInstances
+			);
+			renderer.immediateContext->PSSetShader(
+				pixelShader,
+				NULL,	// ID3D11ClassInstance**
+				0	// NumClassInstances
+			);
+
+			renderer.immediateContext->IASetInputLayout( inputLayout );
+			renderer.immediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+			
+			{
+				UINT Strides[1];
+				UINT Offsets[1];
+				ID3D11Buffer* pVB[1];
+				pVB[0] = VB;
+				Strides[0] = sizeof(Vec3D);
+				Offsets[0] = 0;
+				renderer.immediateContext->IASetVertexBuffers( 0, 1, pVB, Strides, Offsets );
+			}
+			{
+			//	renderer.immediateContext->IASetIndexBuffer( IB, DXGI_FORMAT_R16_UINT, 0 );
+			}
+
+			renderer.immediateContext->Draw(3,0);
+			//renderer.immediateContext->DrawIndexed(3,0,0);
+		}
+	};
+
+	gRenderer->pipeline.AddStage(new_one(MyRenderStage));
+}
+
+void CL_ReloadPipeline() {
+	gRenderer->pipeline.Load("R:/shader_test/test.pipeline");
+
+}
+void CL_ReloadShaders() {
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+#include "RF.h"
+#pragma hdrstop
+
+struct SimpleVertex
+{
+    XMFLOAT3 Pos;
+};
+
+struct CB_vs_data {
+	Matrix4	wvp;
+};
+	
+struct Globals
+{
+	CB_vs_data	cb_vs_data;	
+};
+
+static Globals	gVars;
+
+class MyRenderStage : public RenderStage
+{
+	dxPtr< ID3D11InputLayout >		inputLayout;
+	dxPtr< ID3D11VertexShader >		vertexShader;
+	dxPtr< ID3D11PixelShader >		pixelShader;
+	
+	dxPtr< ID3D11Buffer >	VB;
+	dxPtr< ID3D11Buffer >	IB;
+	
+	dxPtr< ID3D11Buffer >	vs_const_buffer;
+
+public:
+	MyRenderStage()
+	{
+		URI test("R:/shader_test/Tutorial02.fx");
+
+		dxPtr< ID3DBlob >	vsByteCode;
+		vertexShader = dxCreateVertexShaderFromFile( test.ToChar(), "VS", &vsByteCode.Ptr );
+
+		pixelShader = dxCreatePixelShaderFromFile( test.ToChar(), "PS" );
+
+
+		// Create our vertex input layout
+
+		const D3D11_INPUT_ELEMENT_DESC layout[] =
+		{
+			{ "POSITION",  0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0,  D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			//	{ "NORMAL",    0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+			//	{ "TEXCOORD",  0, DXGI_FORMAT_R32G32_FLOAT,    0, 24, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		};
+
+		dxchk( gRenderer->device->CreateInputLayout(
+			layout, mxCOUNT_OF( layout ),
+			vsByteCode->GetBufferPointer(),
+			vsByteCode->GetBufferSize(),
+			&inputLayout.Ptr
+		));
+		dxSetDebugName( inputLayout, "Primary" );
+
+		// Create vertex buffer
+		{
+			SimpleVertex verts[] =
+			{
+				XMFLOAT3( 0.0f, 0.5f, 0.5f ),
+				XMFLOAT3( 0.5f, -0.5f, 0.5f ),
+				XMFLOAT3( -0.5f, -0.5f, 0.5f ),
+			};
+
+			D3D11_BUFFER_DESC bufferDesc;
+			mxZERO_OUT(bufferDesc);
+			bufferDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+			bufferDesc.Usage = D3D11_USAGE_DEFAULT; // Not a dynamic buffer
+			bufferDesc.ByteWidth = sizeof(verts); // Buffer size
+			bufferDesc.CPUAccessFlags = 0;   // Indicates that CPU won't access this buffer at all after creation
+			bufferDesc.MiscFlags = 0;
+			bufferDesc.StructureByteStride = 0;
+
+			D3D11_SUBRESOURCE_DATA initData; // Initial data
+			mxZERO_OUT(initData);
+			initData.pSysMem = verts;   
+			dxchk(gRenderer->device->CreateBuffer( &bufferDesc, &initData, &VB.Ptr ));
+			dxSetDebugName( VB, "VB" );
+		}
+	}
+
+	virtual ~MyRenderStage()
+	{
+	}
+
+	virtual void Render( const RenderView& view, Renderer& renderer )
+	{
+		renderer.immediateContext->OMSetRenderTargets( 1, &renderer.mainRT.pRTV.Ptr, NULL );
+	
+		renderer.SetVertexShader(vertexShader);
+		renderer.SetPixelShader(pixelShader);
+
+		gRenderer->immediateContext->IASetInputLayout( inputLayout );
+		gRenderer->immediateContext->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		
+		{
+			UINT Strides[1];
+			UINT Offsets[1];
+			ID3D11Buffer* pVB[1];
+			pVB[0] = VB;
+			Strides[0] = sizeof(SimpleVertex);
+			Offsets[0] = 0;
+			gRenderer->immediateContext->IASetVertexBuffers( 0, 1, pVB, Strides, Offsets );
+		}
+		{
+		//	renderer.immediateContext->IASetIndexBuffer( IB, DXGI_FORMAT_R16_UINT, 0 );
+		}
+
+		renderer.immediateContext->Draw(3,0);
+		//renderer.immediateContext->DrawIndexed(3,0,0);
+	}
+};
+
+void TestScene_Init()
+{
+	gRenderer->pipeline.AddStage(new_one(MyRenderStage));
+}
+
+void CL_ReloadPipeline() {
+	gRenderer->pipeline.Load("R:/shader_test/test.pipeline");
+
+}
+void CL_ReloadShaders() {
+}
+
+
+
+
+
+
+
+
+class dxShaderCache {
+public:
+	enum { MAX_ENTRIES = 2048 };
+};
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/*
+---------------------------------------------------------------------------
+This source file is part of nGENE Tech.
+
+Copyright (c) 2006- Wojciech Toman
+
+This program is free software.
+
+File:		Main.cpp
+Version:	0.02
+Info:		Simple tool for building nGENE archive files.
+---------------------------------------------------------------------------
+*/
+
+#define NOMINMAX
+#include <windows.h>
+#include <tchar.h> 
+#include <stdio.h>
+#include <strsafe.h>
+
+#include "nGENE.h"
+using namespace nGENE;
+
+DefaultFileArchive* pArchive;
+FileManager manager;
+uint nCount;
+
+void traverse(STRSAFE_LPCSTR dir)
+{
+	HANDLE hFind = INVALID_HANDLE_VALUE;
+	DWORD dwError=0;
+	WIN32_FIND_DATA ffd;
+	LARGE_INTEGER filesize;
+	TCHAR szDir[MAX_PATH];
+
+	_tprintf(TEXT("<VISITING DIR>   %s\n"), dir);
+
+	// Prepare string for use with FindFile functions.  First, copy the
+	// string to a buffer, then append '\*' to the directory name.
+
+	StringCchCopy(szDir, MAX_PATH, dir);
+	StringCchCat(szDir, MAX_PATH, TEXT("\\*"));
+
+	// Find the first file in the directory.
+
+	hFind = FindFirstFile(szDir, &ffd);
+
+	if(hFind == INVALID_HANDLE_VALUE)
+		return;
+
+	// List all the files in the directory with some info about them.
+
+	do
+	{
+		if(ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+		{
+			if(strcmp(ffd.cFileName, ".") && strcmp(ffd.cFileName, ".."))
+			{
+				TCHAR szDir[MAX_PATH];
+
+				StringCchCopy(szDir, MAX_PATH, dir);
+				StringCchCat(szDir, MAX_PATH, "/");
+				StringCchCat(szDir, MAX_PATH, ffd.cFileName);
+				traverse(szDir);
+			}
+		}
+		else
+		{
+			filesize.LowPart = ffd.nFileSizeLow;
+			filesize.HighPart = ffd.nFileSizeHigh;
+
+			char szDir[MAX_PATH];
+			char tempDir[MAX_PATH];
+
+			StringCchCopy(tempDir, MAX_PATH, dir);
+			StringCchCat(tempDir, MAX_PATH, "/");
+			StringCchCat(tempDir, MAX_PATH, ffd.cFileName);
+			uint i = 0;
+			char* pointer = tempDir;
+			char c = *pointer;
+			if(c == '.')
+			{
+				++pointer;
+				c = *pointer;
+				if(c == '/' || c == '\\')
+				{
+					++pointer;
+					i += 2;
+				}
+				else
+					--pointer;
+			}
+
+			StringCchCopy(szDir, MAX_PATH - i, pointer);
+
+			string temp(szDir);
+			wstring stName(temp.begin(), temp.end());
+
+			wcout << L"Adding file:" << stName << endl;
+			IFile* pFile = manager.openFile(stName, OPEN_READ | OPEN_BINARY, FT_NORMAL);
+			if(!pFile)
+			{
+				_tprintf(TEXT("\nFile could not be opened for reading.\n"));
+				return;
+			}
+			pArchive->insertFile(pFile);
+			manager.closeFile(stName);
+
+			++nCount;
+		}
+	}
+	while(FindNextFile(hFind, &ffd) != 0);
+
+	dwError = GetLastError();
+	if(dwError != ERROR_NO_MORE_FILES) 
+		return;
+
+	FindClose(hFind);
+}
+
+int main(int argc, char* argv[])
+{
+	_tprintf(TEXT("\nnGENE Archive Builder\n"));
+	_tprintf(TEXT("Wojciech Toman 2009\n\n"));
+
+	size_t length_of_arg;
+	
+
+	// If the directory is not specified as a command-line argument,
+	// print usage.
+
+	if(argc != 3 && argc != 4)
+	{
+		_tprintf(TEXT("\nUsage: %s <directory name> <archive name> [-c OPTIONAL compression]\n"), argv[0]);
+		return (-1);
+	}
+
+	// Read compression flag
+	bool bCompress = false;
+	if(argc == 4)
+	{
+		bCompress = strcmp(argv[3], "-c") ? false : true;
+	}
+
+	string temp(argv[2]);
+	wstring stName(temp.begin(), temp.end());
+	pArchive = (DefaultFileArchive*)manager.openArchive(L"Default", stName.c_str(), OPEN_WRITE | OPEN_BINARY);
+	if(!pArchive)
+	{
+		_tprintf(TEXT("\nArchive file could not be created.\n"));
+		return (-1);
+	}
+
+	// Set compression flag
+	if(bCompress)
+		pArchive->setFlags(DFAF_COMPRESS);
+
+	// Check that the input path plus 3 is not longer than MAX_PATH.
+	// Three characters are for the "\*" plus NULL appended below.
+
+	StringCchLength(argv[1], MAX_PATH, &length_of_arg);
+
+	if (length_of_arg > (MAX_PATH - 3))
+	{
+		_tprintf(TEXT("\nDirectory path is too long.\n"));
+		return (-1);
+	}
+
+	_tprintf(TEXT("\nTarget directory is %s\n\n"), argv[1]);
+
+
+	traverse(argv[1]);
+
+	manager.closeFile(stName);
+
+	_tprintf(TEXT("\nTotal: %d files added to the archive file\n"), nCount);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+//--------------------------------------------------------------//
+static void LoadMap_PlainTextFile( const String& fileName )
+{
+	//if( mxDataStream::Ref inStream = clContentServer::Get().OpenStream(URI( fileName )) )
+	//{
+	//	putf("Loading map: '%s'.\n",fileName.ToChar());
+	//	
+	//}
+	putf("Loading test map.\n");
+}
+//--------------------------------------------------------------//
+void clGame::LoadMap( const String& fileName )
+{
+	String fileExt;
+	fileName.ExtractFileExtension(fileExt);
+	if( fileExt == "txt" ) {
+		LoadMap_PlainTextFile( fileName );
+	} else {
+		mxWarnf("Unsupported file format '%s'.\n",fileExt.ToChar());
+	}
+}
+
+
+
+
+
+
+
+
+
+
+
+
+inline
+void rrFormatInt(
+	ANSICHAR* buffer, size_t bufferSize,
+	const char* msg,
+	int number
+	)
+{
+	mxSPrintfAnsi( buffer, bufferSize,
+		"%s%d", msg, number );
+};
+
+inline
+void rrFormatFloat(
+	ANSICHAR* buffer, size_t bufferSize,
+	const char* msg,
+	float f
+	)
+{
+	mxSPrintfAnsi( buffer, bufferSize,
+		"%s%.3f", msg, f );
+};
+
+inline
+void rrFormat(
+	ANSICHAR* buffer, size_t bufferSize,
+	const char* msg,
+	const Vec2D& vector
+	)
+{
+	mxSPrintfAnsi( buffer, bufferSize,
+		"%s%.3f, %.3f", msg, vector.x, vector.y );
+};
+
+inline
+void rrFormat(
+	ANSICHAR* buffer, size_t bufferSize,
+	const char* msg,
+	const Vec3D& vector
+	)
+{
+	mxSPrintfAnsi( buffer, bufferSize,
+		"%s%.3f, %.3f, %.3f", msg, vector.x, vector.y, vector.z );
+};
+
+inline
+void rrFormat(
+	ANSICHAR* buffer, size_t bufferSize,
+	const char* msg,
+	const Matrix4& m
+	)
+{
+	mxSPrintfAnsi( buffer, bufferSize,
+		"%s"
+		"%.6f, %.6f, %.6f, %.6f, "
+		"%.6f, %.6f, %.6f, %.6f, "
+		"%.6f, %.6f, %.6f, %.6f, "
+		"%.6f, %.6f, %.6f, %.6f",
+		msg,
+		m[0][0], m[0][1], m[0][2], m[0][3],
+		m[1][0], m[1][1], m[1][2], m[1][3],
+		m[2][0], m[2][1], m[2][2], m[2][3],
+		m[3][0], m[3][1], m[3][2], m[3][3]
+	);
+};
+
+
+// use this for TFixedString<LENGTH>
+#define RR_FORMAT_FIXED_STRING( fixedString, msg, fmt ) \
+	rrFormat( fixedString.Ptr(), fixedString.GetCapacity(), msg, fmt )
+
+#define RR_FORMAT_FIXED_STRING_INT( fixedString, msg, fmt ) \
+	rrFormatInt( fixedString.Ptr(), fixedString.GetCapacity(), msg, fmt )
+
+#define RR_FORMAT_FIXED_STRING_FLOAT( fixedString, msg, fmt ) \
+	rrFormatFloat( fixedString.Ptr(), fixedString.GetCapacity(), msg, fmt )
+
+
+
+	Vec3D lookDir( mForward );
+
+	lookDir *= mat;
+
+	FLOAT phi = ACos( lookDir.Dot( WORLD_UP_VECTOR ) );
+
+	if( phi > DEG2RAD(88.0f) ) {
+	}
+	if( phi < DEG2RAD(-88.0f) ) {
+	}
+
+	if(TEST_BIT(cmds, Cmd_MoveForward)) {
+		camera.Walk( walkDist );
+	}
+	if(TEST_BIT(cmds, Cmd_MoveBackward)) {
+		camera.Walk( -walkDist );
+	}
+	if(TEST_BIT(cmds, Cmd_MoveLeft)) {
+		camera.Strafe( -strafeDist );
+	}
+	if(TEST_BIT(cmds, Cmd_MoveRight)) {
+		camera.Strafe( strafeDist );
+	}
+
+	if(TEST_BIT(cmds, Cmd_Duck)) {
+		camera.Fly( -jumpDist );
+	}
+	if(TEST_BIT(cmds, Cmd_Jump)) {
+		camera.Fly( jumpDist );
+	}
+
+	if(TEST_BIT(cmds, Cmd_RotateView))
+	{
+	//	camera.Yaw( DEG2RAD( yaw * rotation ) );
+
+	Matrix4	m;
+	m.SetRotationInDegrees(Vec3D(yaw* rotation*0.01,pitch* rotation*0.01,0.0f));
+//	m = AxMatrixRotationYawPitchRoll(0,DEG2RAD(pitch* rotation*0.01),DEG2RAD(yaw* rotation*0.01));
+	XMVECTOR	vv;
+	vv = XMVectorSet(pitch* rotation*0.01,yaw* rotation*0.01,0.0f,0.0f);
+	XMMATRIX mm = XMMatrixRotationRollPitchYawFromVector(vv);
+
+	memcpy(&m,&mm,sizeof(mm));
+
+	camera.Direction()=m.TransformNormal(camera.Direction());
+	camera.Right()=m.TransformNormal(camera.Right());
+
+		//pitch += deltaPitch;
+		//if( pitch > 45 ) {
+		//	pitch = 45;
+		//} else {
+		//camera.Pitch( DEG2RAD( deltaPitch * rotation ) );
+		//}
+		//pitch = 0.0f;
+	}
+printf("pitch %f\n",pitch );
+//	yaw *= 0.8f * deltaSeconds;
+//	deltaPitch *= 0.8f * deltaSeconds;
+//yaw = 0.0f;
+//pitch = 0.0f;
+
+
+//	m = AxMatrixRotationYawPitchRoll(0,DEG2RAD(pitch* deltaSeconds),DEG2RAD(yaw* deltaSeconds));
+
+//Vec3D	v0(camera.Direction());
+
+
+//	m.TransformNormal(camera.Right());
+//	m.TransformNormal(camera.UpDirection());
+//	camera.Direction().NormalizeFast();
+
+//	mxASSERT(v0!=camera.Direction()
+
+printf("Direction %f %f %f\n",camera.Direction().x,camera.Direction().y,camera.Direction().z );
+
+//	camera.Right() = camera.UpDirection().Cross( camera.Direction() );
+//	camera.Right().Normalize();
+
+	camera.Direction().Normalize();
+	camera.Right() = Vec3D(0,1,0).Cross( camera.Direction() );
+	camera.Right().Normalize();
+
+//	camera.RepairNormals();
+
+	cmds = 0;
+}
+
+	
+	
+/*
+=============================================================================
+	File:	client_render.h
+	Desc:
+=============================================================================
+*/
+
+#ifndef __CLIENT_RENDER_H__
+#define __CLIENT_RENDER_H__
+
+// graphics view
+//
+class RenderView {
+public:
+/*
+	rxViewFrustum	frustum;
+	Matrix4 		viewMatrix;
+	Matrix4  		projectionMatrix;
+	Matrix4  		viewProjectionMatrix;
+	Matrix4  		inverseViewMatrix;
+	Matrix4  		inverseViewProjectionMatrix;
+//	Matrix4  		inverseViewProjectionMatrix_Tex2Clip;
+	Matrix4  		inverseProjectionMatrix;
+
+	Vec3D			eyePosition;
+	FLOAT			farZ;
+	Vec3D			lookDirection;		// normalized look direction
+	FLOAT			invFarZ;			// 1.0f / farZ
+	Vec3D			rightVector;
+	FLOAT			_pad0;
+	Vec3D			upVector;
+*/
+public:
+	mxINLINE RenderView( const rxSceneView& view )
+	{
+//		mxASSERT( view.IsOk() );
+/*
+		viewMatrix.BuildLookAtMatrixLH(
+			view.mOrigin,
+			view.GetRight(),
+			view.GetUp(),
+			view.GetLookDirection()
+		);
+		projectionMatrix.BuildPerspectiveLH(
+			view.fovY,
+			view.aspect,
+			view.nearZ,
+			view.farZ
+		);
+
+		viewProjectionMatrix = viewMatrix * projectionMatrix;
+	
+		frustum.ExtractFrustumPlanes( viewProjectionMatrix );
+
+		//inverseViewMatrix = viewMatrix.Inverse();
+		inverseViewMatrix = Matrix4(
+			Vec4D( view.viewAxes[ VA_Right ],	0.0f ),
+			Vec4D( view.viewAxes[ VA_Up ],		0.0f ),
+			Vec4D( view.viewAxes[ VA_LookAt ],	0.0f ),
+			Vec4D( view.mOrigin,				1.0f )
+		);
+
+		inverseViewProjectionMatrix = viewProjectionMatrix.Inverse();
+
+		// inverseViewProjectionMatrix_Tex2Clip is used to extract world-space position
+		// from normalized view-space depth (taken from scene depth texture)
+	//	inverseViewProjectionMatrix_Tex2Clip = Transform_Tex2Clip * inverseViewProjectionMatrix;
+
+		inverseProjectionMatrix = projectionMatrix.Inverse();
+
+		eyePosition 	= view.mOrigin;
+		farZ			= view.farZ;
+		lookDirection	= view.GetLookDirection();
+		invFarZ			= 1.0f / farZ;
+		rightVector		= view.GetRight();
+		upVector		= view.GetUp();
+*/
+	}
+/*
+	// computes normalized view-space depth of the given point
+	//
+	mxINLINE FLOAT CalculateDepth( const Vec3D& point ) const
+	{
+		Vec4D pointH( point, 1.0f );
+		pointH *= this->viewProjectionMatrix;
+		FLOAT invW = 1.0f / pointH.w;
+		return pointH.z * invW;
+	}
+
+	mxFORCEINLINE const Vec3D & GetOrigin() const
+	{
+		return eyePosition;
+	}
+*/
+};
+
+//struct Surface
+//{
+//	clMaterial *		material;
+//	dxModel *			model;			// geometry + transform
+//	dxModelSurface		surfaceData;
+//};
+
+//
+// part of mesh with a single material
+//
+struct Surface
+{
+	rxMeshChunk	meshPart;
+};
+
+class clModel
+{
+public:
+	Matrix4		localToWorld;	// local-to-world transform
+	rxMesh		geometry;
+};
+/*
+=======================================================================
+
+	Render model
+
+=======================================================================
+*/
+
+// enumerates kinds of render entities
+//
+enum ERenderEntity
+{
+	RE_UNKNOWN = 0,
+	RE_MODEL,
+	RE_LIGHT,
+};
+
+// graphics model (geometry, transform and material)
+//
+//class rxModel {
+//public:
+//	rxBounds		bounds;	// for view frustum culling
+//
+//	TPtr< rxMesh >				mesh;
+//	TBuffer< rxModelSurface >	surfaces;
+//
+//public:
+//	rxModel()
+//	{}
+//};
+
+class rxModelServer {
+public:
+};
+
+/*
+=======================================================================
+	
+		Constructive Solid Geometry.
+
+=======================================================================
+*/
+/*
+=======================================================================
+	File:	CSG.h
+	Desc:	This module contains all defines, typedefs, and prototypes
+			for constructive solid geometry.
+=======================================================================
+*/
+/*
+=======================================================================
+	File:	CSG.cpp
+	Desc:	This module implements routines for constructive solid geometry.
+=======================================================================
+*/
+// enumerates kinds of CSG operations
+//
+enum ECsgOp {
+	CsgOp_Subtract,	// difference
+	CsgOp_Add,		// union
+};
+
+// vertex used for csg models
+//
+struct rxVertex_Csg
+{
+	Vec3D	xyz;		// 12 position
+	Vec2D	normal;		// 8  z = sqrt(1-x*x-y*y)
+	Vec2D	tangent;	// 8  z = sqrt(1-x*x-y*y)
+	Vec2D	uv;			// 8  texture coordinates
+
+	// 12+8+8+8 = 36 bytes
+};
+
+// Maximum number of vertices a polygon can have.
+enum {
+	MAX_FACE_POINTS = 64
+};
+
+struct rxCsgModelDesc
+{
+	rxVertex_Csg *	verts;
+	UINT		numVerts;
+};
+
+class rxCsgModel {
+public:
+};
+
+/*
+=======================================================================
+
+	Dynamic lights
+
+=======================================================================
+*/
+class rxLight {
+public:
+	rxBounds		bounds;	// for view frustum culling
+};
+
+/*
+=======================================================================
+
+	Render queue
+
+=======================================================================
+*/
+
+//
+// EDrawOrder - enumerates render queue priorities assigned to materials.
+//
+enum EDrawOrder
+{
+	DO_BACKGROUND = 0,	// skyboxes, backgrounds representing distant scenery, environments, etc
+
+	DO_GUI,			// GUI surfaces
+
+	DO_PRE,			// for post-processing effects that need to be rendered before normal scene objects
+
+	DO_OPAQUE,		// fully opaque geometry
+
+	DO_NORMAL,		// normal scene objects
+
+	DO_DECALS,		// scorch marks, bullet hits, explosion marks, etc
+	DO_TRANSPARENT,	// alpha-blended surfaces
+
+	DO_PORTAL,		// portal surfaces
+
+	DO_NEAREST,		// weapons, smoke puffs, etc
+	DO_POST_PROCESS,
+
+	DO_LAST,
+};
+
+struct rxRenderQueueEntry
+{
+	TEnum< ERenderEntity, UINT >	type;
+};
+
+class rxRenderQueue {
+public:
+	mxINLINE rxRenderQueue()
+	{}
+	mxINLINE ~rxRenderQueue()
+	{}
+
+public:
+	TBuffer< rxRenderQueueEntry >	items;
+};
+
+/*
+=======================================================================
+	
+	Graphics pipeline
+
+=======================================================================
+*/
+
+//
+//	RenderStage - is a part of render pipeline
+//	with specific rendering functionality (single responcibility).
+//
+class RenderStage : public ReferenceCounted {
+public:
+	virtual void Render( const rxSceneView& sceneView ) = 0;
+
+protected:
+	virtual ~RenderStage();
+};
+
+//
+//	Pipeline - graphics pipeline, consists of render stages,
+//	calls them in order to perform rendering.
+//	(Guarantees ordered rendering.)
+//
+class Pipeline : public TSingleton< Pipeline > {
+public:
+	Pipeline();
+	~Pipeline();
+
+	void Render( const rxSceneView& sceneView );
+
+	void AddStage( RenderStage* newStage );
+
+private:
+	TBuffer< RenderStage* >	stages;
+};
+
+class clRenderer : public TSingleton< clRenderer > {
+public:
+	clRenderer();
+	~clRenderer();
+
+	void Render( const rxSceneView& sceneView );
+};
+
+#endif // !__CLIENT_RENDER_H__
+
+//--------------------------------------------------------------//
+//				End Of File.									//
+//--------------------------------------------------------------//
+
+
+

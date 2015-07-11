@@ -3,36 +3,35 @@
 -- License: http://www.opensource.org/licenses/BSD-2-Clause
 --
 
+
+-----------------------------------------------------------------------
+-- BGFX
+-----------------------------------------------------------------------
+
 newoption {
 	trigger = "with-amalgamated",
 	description = "Enable amalgamated build.",
 }
-
 newoption {
 	trigger = "with-ovr",
 	description = "Enable OculusVR integration.",
 }
-
 newoption {
 	trigger = "with-sdl",
 	description = "Enable SDL entry.",
 }
-
 newoption {
 	trigger = "with-glfw",
 	description = "Enable GLFW entry.",
 }
-
 newoption {
 	trigger = "with-scintilla",
 	description = "Enable building with Scintilla editor.",
 }
-
 newoption {
 	trigger = "with-shared-lib",
 	description = "Enable building shared library.",
 }
-
 newoption {
 	trigger = "with-tools",
 	description = "Enable building tools.",
@@ -43,8 +42,17 @@ local action = _ACTION or ""
 
 G_ROOT_DIR = _WORKING_DIR
 G_BUILD_DIR = "../.Build/";
-G_BINARIES_DIR = "../._Binaries/";
---G_SOLUTION_DIR = G_BUILD_DIR .. action
+--G_BINARIES_DIR = "../._Binaries/";
+G_DEMOS_DIR = "../_Demos/";
+G_ENGINE_DIR = "../_Engine/";
+
+G_SDL_DIR = path.join(G_ROOT_DIR, "SDL");
+
+BGFX_DIR = path.getabsolute("../bgfx/")
+BX_DIR = path.getabsolute(path.join(BGFX_DIR, "../bx"))
+
+local BGFX_BUILD_DIR = path.join(BGFX_DIR, ".build")
+local BGFX_THIRD_PARTY_DIR = path.join(BGFX_DIR, "3rdparty")
 
 -- Create a new solution.
 solution 'SummerTraining'
@@ -71,32 +79,6 @@ solution 'SummerTraining'
 	end
 
 	language "C++"
-	startproject "example-00-helloworld"
-
---targetsuffix [Debug]
-
-BGFX_DIR = path.getabsolute("../bgfx/")
-BX_DIR = path.getabsolute(path.join(BGFX_DIR, "../bx"))
-
-local BGFX_BUILD_DIR = path.join(BGFX_DIR, ".build")
-local BGFX_THIRD_PARTY_DIR = path.join(BGFX_DIR, "3rdparty")
-
-
---targetdir(path.join(G_SOLUTION_DIR, "bin"))
---targetdir(path.join(G_BINARIES_DIR, "bin"))
---objdir (path.join(G_SOLUTION_DIR, "obj"))
-
---printf("BGFX_DIR=%s, BGFX_BUILD_DIR=%s, BGFX_THIRD_PARTY_DIR=%s", BGFX_DIR, BGFX_BUILD_DIR, BGFX_THIRD_PARTY_DIR)
-
---printf("BGFX_DIR=%s, BX_DIR=%s, BGFX_BUILD_DIR=%s, BGFX_THIRD_PARTY_DIR=%s",BGFX_DIR,BX_DIR, BGFX_BUILD_DIR, BGFX_THIRD_PARTY_DIR)
-
-
-
-
-
-
-
-
 
 -- needed for bgfx
 function copyLib()
@@ -109,8 +91,6 @@ if _OPTIONS["with-sdl"] then
 		end
 	end
 end
-
-
 
 
 function exampleProject(_name)
@@ -385,16 +365,22 @@ if not toolchain(G_BUILD_DIR, BGFX_THIRD_PARTY_DIR) then
 	return -- no action specified
 end
 
+dofile "_util.lua"
+
 dofile (path.join(BGFX_DIR, "scripts/bgfx.lua"))
 
 group "examples"
 dofile (path.join(BGFX_DIR, "scripts/example-common.lua"))
 
 group "libs"
+-- bgfx library
 bgfxProject("", "StaticLib", {})
-
+-- bgfx example projects
+startproject "example-00-helloworld"
+--[[]]
 group "examples"
 exampleProject("00-helloworld")
+--[[
 exampleProject("01-cubes")
 exampleProject("02-metaballs")
 exampleProject("03-raymarch")
@@ -427,3 +413,91 @@ if _OPTIONS["with-tools"] then
 	dofile (path.join(BGFX_DIR, "scripts/texturec.lua"))
 	dofile (path.join(BGFX_DIR, "scripts/geometryc.lua"))
 end
+]]
+
+-- SDL library
+MakeSDL("SDL", {})
+-- engine library
+CreateProject("Engine", "StaticLib", {})
+
+
+
+
+function DemoProject(_name)
+
+	project (_name)
+		uuid (os.uuid(_name))
+		kind "WindowedApp"
+
+	configuration {}
+
+	includedirs {
+		path.join(BX_DIR,   "include"),
+		path.join(BGFX_DIR, "include"),
+		path.join(BGFX_DIR, "3rdparty"),
+		path.join(BGFX_DIR, "examples/common"),
+		G_ENGINE_DIR,
+	}
+
+	files {
+		path.join(G_DEMOS_DIR, _name, "**.c"),
+		path.join(G_DEMOS_DIR, _name, "**.cpp"),
+		path.join(G_DEMOS_DIR, _name, "**.h"),
+		path.join(G_DEMOS_DIR, _name, "**.sc"),
+	}
+
+	removefiles {
+		path.join(G_DEMOS_DIR, _name, "**.bin.h"),
+	}
+
+	links {
+		"bgfx",
+		"example-common",
+	}
+
+	configuration { "vs*" }
+		--[[linkoptions {
+			"/ignore:4199", -- LNK4199: /DELAYLOAD:*.dll ignored; no imports found from *.dll
+		}
+		links { -- this is needed only for testing with GLES2/3 on Windows with VS2008
+			"DelayImp",
+		}
+		]]
+
+	configuration { "vs201*" }
+		linkoptions { -- this is needed only for testing with GLES2/3 on Windows with VS201x
+			"/DELAYLOAD:\"libEGL.dll\"",
+			"/DELAYLOAD:\"libGLESv2.dll\"",
+		}
+
+	configuration { "vs20* or mingw*" }
+		links {
+			"gdi32",
+			"psapi",
+		}
+
+	-- WinRT targets need their own output directories or build files stomp over each other
+	configuration { "x32", "winphone8* or winstore8*" }
+		targetdir (path.join(BGFX_BUILD_DIR, "win32_" .. _ACTION, "bin", _name))
+		objdir (path.join(BGFX_BUILD_DIR, "win32_" .. _ACTION, "obj", _name))
+
+
+	configuration { "x64", "winphone8* or winstore8*" }
+		targetdir (path.join(BGFX_BUILD_DIR, "win64_" .. _ACTION, "bin", _name))
+		objdir (path.join(BGFX_BUILD_DIR, "win64_" .. _ACTION, "obj", _name))
+
+	configuration {}
+
+	strip()
+end
+
+group "demos"
+debugdir (path.join(G_DEMOS_DIR, _name, "runtime"))
+DemoProject("BSP-CSG")
+
+project ("test")
+	uuid (os.uuid("test"))
+	kind "WindowedApp"
+	files {
+		path.join(G_DEMOS_DIR, "test/*.cpp"),
+	}
