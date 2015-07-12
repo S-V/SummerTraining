@@ -32,7 +32,8 @@ light the fragment.
 #include <Renderer/Renderer.h>
 #include <Renderer/Light.h>
 #include <Renderer/Vertex.h>
-#include <Renderer/Shaders/HLSL/_common.h>
+//#include <Renderer/Shaders/HLSL/_common.h>
+#include <Renderer/_common.h>
 #include <Renderer/ForwardPlus.h>
 
 ForwardPlusRenderer::ForwardPlusRenderer()

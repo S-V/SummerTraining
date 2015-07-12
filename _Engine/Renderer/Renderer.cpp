@@ -8,6 +8,8 @@
 
 #include <Graphics/Effects.h>
 
+#include <Renderer/_common.h>
+
 #include <Renderer/Mesh.h>
 #include <Renderer/Model.h>
 #include <Renderer/Texture.h>

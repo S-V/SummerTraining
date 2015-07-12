@@ -3,7 +3,7 @@
 
 #include <Graphics/Device.h>
 #include "DDS_Reader.h"
-#include "image.h"
+//#include "image.h"
 
 // "DDS " or ' SDD' on little-endian machines
 #define DDS_MAGIC	0x20534444
@@ -247,6 +247,7 @@ static PixelFormat::Enum FindEngineFormat( UINT32 _DDS_format )
 	UNDONE;
 	return PixelFormat::Unknown;
 }
+#if 0
 
 ERet DDS_Parse( const void* _data, UINT _size, TextureImage &_dds )
 {
@@ -305,7 +306,7 @@ ERet DDS_Parse( const void* _data, UINT _size, TextureImage &_dds )
 
 	return ALL_OK;
 }
-
+#endif
 //--------------------------------------------------------------//
 //				End Of File.									//
 //--------------------------------------------------------------//

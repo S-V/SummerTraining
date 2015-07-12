@@ -13,7 +13,7 @@
 #include <Graphics/Device.h>
 #include <Graphics/Geometry.h>
 #include <Graphics/Legacy.h>
-#include "image.h"
+//#include "image.h"
 
 #if LLGL_CONFIG_DRIVER_D3D11
 	#include "Driver_D3D11.h"
@@ -396,7 +396,9 @@ bool PixelFormat::IsCompressed( PixelFormat::Enum _format )
 }
 UINT PixelFormat::BitsPerPixel( PixelFormat::Enum _format )
 {
-	return bgfx::s_imageBlockInfo[_format].bitsPerPixel;
+//	return bgfx::s_imageBlockInfo[_format].bitsPerPixel;
+	UNDONE;
+	return 0;
 }
 UINT PixelFormat::GetBlockSize( Enum _format )
 {

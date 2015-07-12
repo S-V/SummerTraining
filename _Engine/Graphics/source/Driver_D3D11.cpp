@@ -21,7 +21,7 @@ http://seanmiddleditch.com/journal/2014/02/direct3d-11-debug-api-tricks/
 #include "DDS_Reader.h"
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "External/stb/stb_image.h"
+//#include "stb_image.h"
 
 namespace llgl
 {
@@ -1733,29 +1733,30 @@ UINT32 FindObjectIndexByHash( THandleManager< OBJECT >& objects, const DESCRIPTI
 		else if( magicNum == DDS_MAGIC_NUM )
 		{
 			TextureImage	image;
-			DDS_Parse( _data, _size, image );
+			//DDS_Parse( _data, _size, image );
+			UNDONE;
 
 			this->CreateInternal(image);
 		}
 		else
 		{
-			int tex_x, tex_y, tex_comp;
-			void* tex_data = stbi_load_from_memory( (const unsigned char*)_data, (int)_size, &tex_x, &tex_y, &tex_comp, 0 );
-			if( tex_data )
-			{
-				TextureImage image;
-				image.data		= tex_data;
-				image.size		= tex_x * tex_y * sizeof(UINT32);
-				image.width		= tex_x;
-				image.height	= tex_y;
-				image.depth		= 1;
-				image.format	= PixelFormat::RGBA8;
-				image.numMips	= 1;
-				image.isCubeMap	= false;
+			//int tex_x, tex_y, tex_comp;
+			//void* tex_data = stbi_load_from_memory( (const unsigned char*)_data, (int)_size, &tex_x, &tex_y, &tex_comp, 0 );
+			//if( tex_data )
+			//{
+			//	TextureImage image;
+			//	image.data		= tex_data;
+			//	image.size		= tex_x * tex_y * sizeof(UINT32);
+			//	image.width		= tex_x;
+			//	image.height	= tex_y;
+			//	image.depth		= 1;
+			//	image.format	= PixelFormat::RGBA8;
+			//	image.numMips	= 1;
+			//	image.isCubeMap	= false;
 
-				this->CreateInternal(image);
-			}
-			else
+			//	this->CreateInternal(image);
+			//}
+			//else
 			{
 				ptERROR("Unknown texture type");
 			}

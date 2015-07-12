@@ -162,52 +162,6 @@ function exampleProject(_name)
 		configuration {}
 	end
 
-	if _OPTIONS["with-ovr"] then
-		links   {
-			"winmm",
-			"ws2_32",
-		}
-
-		-- Check for LibOVR 5.0+
-		if os.isdir(path.join(os.getenv("OVR_DIR"), "LibOVR/Lib/Windows/Win32/Debug/VS2012")) then
-
-			configuration { "x32", "Debug" }
-				libdirs { path.join("$(OVR_DIR)/LibOVR/Lib/Windows/Win32/Debug", _ACTION) }
-
-			configuration { "x32", "Release" }
-				libdirs { path.join("$(OVR_DIR)/LibOVR/Lib/Windows/Win32/Release", _ACTION) }
-
-			configuration { "x64", "Debug" }
-				libdirs { path.join("$(OVR_DIR)/LibOVR/Lib/Windows/x64/Debug", _ACTION) }
-
-			configuration { "x64", "Release" }
-				libdirs { path.join("$(OVR_DIR)/LibOVR/Lib/Windows/x64/Release", _ACTION) }
-
-			configuration { "x32 or x64" }
-				links { "libovr" }
-		else
-			configuration { "x32" }
-				libdirs { path.join("$(OVR_DIR)/LibOVR/Lib/Win32", _ACTION) }
-
-			configuration { "x64" }
-				libdirs { path.join("$(OVR_DIR)/LibOVR/Lib/x64", _ACTION) }
-
-			configuration { "x32", "Debug" }
-				links { "libovrd" }
-
-			configuration { "x32", "Release" }
-				links { "libovr" }
-
-			configuration { "x64", "Debug" }
-				links { "libovr64d" }
-
-			configuration { "x64", "Release" }
-				links { "libovr64" }
-		end
-
-		configuration {}
-	end
-
 	configuration { "vs*" }
 		linkoptions {
 			"/ignore:4199", -- LNK4199: /DELAYLOAD:*.dll ignored; no imports found from *.dll
@@ -386,7 +340,9 @@ exampleProject("02-metaballs")
 exampleProject("03-raymarch")
 exampleProject("04-mesh")
 exampleProject("05-instancing")
+]]
 exampleProject("06-bump")
+--[[
 exampleProject("07-callback")
 exampleProject("08-update")
 exampleProject("09-hdr")
@@ -416,9 +372,9 @@ end
 ]]
 
 -- SDL library
-MakeSDL("SDL", {})
+--MakeSDL("SDL", {})
 -- engine library
-CreateProject("Engine", "StaticLib", {})
+--CreateProject("Engine", "StaticLib", {})
 
 
 
@@ -477,14 +433,17 @@ function DemoProject(_name)
 		}
 
 	-- WinRT targets need their own output directories or build files stomp over each other
-	configuration { "x32", "winphone8* or winstore8*" }
-		targetdir (path.join(BGFX_BUILD_DIR, "win32_" .. _ACTION, "bin", _name))
-		objdir (path.join(BGFX_BUILD_DIR, "win32_" .. _ACTION, "obj", _name))
+	configuration { "x32" }
+		--targetdir (path.join(BGFX_BUILD_DIR, "win32_" .. _ACTION, "bin", _name))
+		--objdir (path.join(BGFX_BUILD_DIR, "win32_" .. _ACTION, "obj", _name))
+		targetdir (path.join(G_BUILD_DIR, ".bin"))
+		objdir (path.join(G_BUILD_DIR, ".bin"))
 
-
-	configuration { "x64", "winphone8* or winstore8*" }
-		targetdir (path.join(BGFX_BUILD_DIR, "win64_" .. _ACTION, "bin", _name))
-		objdir (path.join(BGFX_BUILD_DIR, "win64_" .. _ACTION, "obj", _name))
+	configuration { "x64" }
+		--targetdir (path.join(BGFX_BUILD_DIR, "win64_" .. _ACTION, "bin", _name))
+		--objdir (path.join(BGFX_BUILD_DIR, "win64_" .. _ACTION, "obj", _name))
+		targetdir (path.join(G_BUILD_DIR, ".bin"))
+		objdir (path.join(G_BUILD_DIR, ".bin"))
 
 	configuration {}
 
@@ -493,11 +452,108 @@ end
 
 group "demos"
 debugdir (path.join(G_DEMOS_DIR, _name, "runtime"))
-DemoProject("BSP-CSG")
+--DemoProject("BSP-CSG")
 
-project ("test")
-	uuid (os.uuid("test"))
+-- project ("test")
+	-- uuid (os.uuid("test"))
+	-- kind "WindowedApp"
+	-- files {
+		-- path.join(G_DEMOS_DIR, "test/*.cpp"),
+	-- }
+project ("demo")
+
+	uuid (os.uuid("demo"))
 	kind "WindowedApp"
-	files {
-		path.join(G_DEMOS_DIR, "test/*.cpp"),
+
+	defines {
+		"WIN32",
+		"_WIN32",
+		"_HAS_EXCEPTIONS=0",
+		"_HAS_ITERATOR_DEBUGGING=0",
+		"_SCL_SECURE=0",
+		"_SECURE_SCL=0",
+		"_SCL_SECURE_NO_WARNINGS",
+		"_CRT_SECURE_NO_WARNINGS",
+		"_CRT_SECURE_NO_DEPRECATE",
+		"MX_AUTOLINK=0",
 	}
+
+	files {
+		path.join(G_ROOT_DIR, "demo/**.h"),
+		path.join(G_ROOT_DIR, "demo/**.cpp"),
+		path.join(G_ENGINE_DIR, "**.h"),
+		path.join(G_ENGINE_DIR, "**.cpp"),
+	}
+	removefiles {
+		--path.join(G_ENGINE_DIR, "Graphics/**.cpp"),
+		--path.join(G_ENGINE_DIR, "Renderer/**.h"),
+		--path.join(G_ENGINE_DIR, "Renderer/**.cpp"),
+		path.join(G_ENGINE_DIR, "ImGui/**.cpp"),
+	}
+
+	includedirs {
+		path.join(BX_DIR,   "include"),
+		path.join(BGFX_DIR, "include"),
+		path.join(BGFX_DIR, "3rdparty"),
+		path.join(BGFX_DIR, "examples/common"),
+		path.join(BGFX_DIR, G_SDL_DIR, "include"),
+		G_ENGINE_DIR,
+		path.join(G_ROOT_DIR, "stb"),
+	}
+
+	links {
+		"gdi32",
+		"psapi",
+		"winmm",	-- timeGetTime()
+		"Dbghelp",	-- MiniDumpWriteDump()
+
+		"SDL2",
+
+		"bgfx",
+		"example-common",
+
+		"winmm", "comctl32", "Imm32",
+
+		"DxErr", "dxgi", "dxguid", "d3d11", "d3dcompiler",
+	}
+
+	configuration { "Debug" }
+		defines {
+			"BGFX_CONFIG_DEBUG=1",
+		}
+		libdirs {
+		}
+		links {
+			"d3dx11d",
+		}
+		targetsuffix "-Debug"
+
+	configuration { "Release" }
+		flags {
+			"OptimizeSpeed",
+		}
+		links {
+			"d3dx11",
+		}
+		targetsuffix "-Release"
+
+	configuration { "x32", "vs*" }
+		targetdir (path.join(G_BUILD_DIR, "win32_" .. _ACTION, "bin"))
+		objdir (path.join(G_BUILD_DIR, "win32_" .. _ACTION, "obj"))
+		libdirs {
+			targetdir(),
+			"$(DXSDK_DIR)/lib/x86",
+			path.join(G_SDL_DIR, "libs/x86"),
+		}
+
+	configuration { "x64", "vs*" }
+		--defines { "_WIN64" }
+		targetdir (path.join(G_BUILD_DIR, "win64_" .. _ACTION, "bin"))
+		objdir (path.join(G_BUILD_DIR, "win64_" .. _ACTION, "obj"))
+		libdirs {
+			targetdir(),
+			"$(DXSDK_DIR)/lib/x64",
+			path.join(G_SDL_DIR, "libs/x64"),
+		}
+
+	configuration {} -- reset configuration

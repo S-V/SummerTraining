@@ -12,7 +12,9 @@
 #endif
 
 // #define MX_AUTOLINK to automatically include the needed libs (via #pragma lib)
+#ifndef MX_AUTOLINK
 #define MX_AUTOLINK		(1)
+#endif
 
 // Check the compiler and windows version.
 #if !defined(_MSC_VER)
