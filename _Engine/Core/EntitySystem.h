@@ -26,12 +26,12 @@ public:
 	EntityComponent* FindComponentOfType( const mxClass* baseType );
 };
 
-struct EntityComponent : public TSinglyLinkedList< EntityComponent >
+struct EntityComponent : public CStruct, public TSinglyLinkedList< EntityComponent >
 {
 	TPtr< Entity >			m_owner;
 	TPtr< const mxClass >	m_class;
 public:
-	mxDECLARE_CLASS(EntityComponent,EntityComponent);
+	mxDECLARE_CLASS(EntityComponent,CStruct);
 	mxDECLARE_REFLECTION;
 	EntityComponent();
 	~EntityComponent();

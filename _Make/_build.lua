@@ -517,6 +517,12 @@ project ("demo")
 		"DxErr", "dxgi", "dxguid", "d3d11", "d3dcompiler",
 	}
 
+	configuration { "vs*" }
+		linkoptions {
+			"/ignore:4199", -- LNK4199: /DELAYLOAD:*.dll ignored; no imports found from *.dll
+			"/ignore:4221", -- LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
+		}
+	
 	configuration { "Debug" }
 		defines {
 			"BGFX_CONFIG_DEBUG=1",
