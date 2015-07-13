@@ -3,7 +3,6 @@
 -- License: http://www.opensource.org/licenses/BSD-2-Clause
 --
 
-
 -----------------------------------------------------------------------
 -- BGFX
 -----------------------------------------------------------------------
@@ -42,9 +41,9 @@ local action = _ACTION or ""
 
 G_ROOT_DIR = _WORKING_DIR
 G_BUILD_DIR = "../.Build/";
---G_BINARIES_DIR = "../._Binaries/";
 G_DEMOS_DIR = "../_Demos/";
 G_ENGINE_DIR = "../_Engine/";
+G_BINARIES_DIR = "../_Binaries/";
 
 G_SDL_DIR = path.join(G_ROOT_DIR, "SDL");
 
@@ -330,17 +329,16 @@ group "libs"
 -- bgfx library
 bgfxProject("", "StaticLib", {})
 -- bgfx example projects
-startproject "example-00-helloworld"
 --[[]]
 group "examples"
 exampleProject("00-helloworld")
---[[
+--[[]]
 exampleProject("01-cubes")
 exampleProject("02-metaballs")
 exampleProject("03-raymarch")
 exampleProject("04-mesh")
 exampleProject("05-instancing")
-]]
+
 exampleProject("06-bump")
 --[[
 exampleProject("07-callback")
@@ -373,6 +371,7 @@ end
 
 -- SDL library
 --MakeSDL("SDL", {})
+
 -- engine library
 --CreateProject("Engine", "StaticLib", {})
 
@@ -450,28 +449,20 @@ function DemoProject(_name)
 	strip()
 end
 
-group "demos"
-debugdir (path.join(G_DEMOS_DIR, _name, "runtime"))
---DemoProject("BSP-CSG")
+configuration {} -- reset configuration
 
--- project ("test")
-	-- uuid (os.uuid("test"))
-	-- kind "WindowedApp"
-	-- files {
-		-- path.join(G_DEMOS_DIR, "test/*.cpp"),
-	-- }
-project ("demo")
+group "libs"
+	
+project ("Engine")
 
-	uuid (os.uuid("demo"))
-	kind "WindowedApp"
+	uuid (os.uuid("Engine"))
+	kind "StaticLib"
 
 	defines {
-		"WIN32",
-		"_WIN32",
+		"WIN32", "_WIN32",
 		"_HAS_EXCEPTIONS=0",
 		"_HAS_ITERATOR_DEBUGGING=0",
-		"_SCL_SECURE=0",
-		"_SECURE_SCL=0",
+		"_SCL_SECURE=0", "_SECURE_SCL=0",
 		"_SCL_SECURE_NO_WARNINGS",
 		"_CRT_SECURE_NO_WARNINGS",
 		"_CRT_SECURE_NO_DEPRECATE",
@@ -479,16 +470,90 @@ project ("demo")
 	}
 
 	files {
-		path.join(G_ROOT_DIR, "demo/**.h"),
-		path.join(G_ROOT_DIR, "demo/**.cpp"),
 		path.join(G_ENGINE_DIR, "**.h"),
 		path.join(G_ENGINE_DIR, "**.cpp"),
 	}
 	removefiles {
-		--path.join(G_ENGINE_DIR, "Graphics/**.cpp"),
-		--path.join(G_ENGINE_DIR, "Renderer/**.h"),
-		--path.join(G_ENGINE_DIR, "Renderer/**.cpp"),
 		path.join(G_ENGINE_DIR, "ImGui/**.cpp"),
+	}
+
+	includedirs {
+		G_ENGINE_DIR,
+		--path.join(G_ROOT_DIR, "stb"),
+	}
+
+	links {
+		"gdi32",
+		"psapi",
+		"winmm",	-- timeGetTime()
+		"Dbghelp",	-- MiniDumpWriteDump()
+		"comctl32", "Imm32",
+
+		"DxErr", "dxgi", "dxguid", "d3d11", "d3dcompiler",
+	}
+
+	configuration { "vs*" }
+		linkoptions {
+			"/ignore:4199", -- LNK4199: /DELAYLOAD:*.dll ignored; no imports found from *.dll
+			"/ignore:4221", -- LNK4221: This object file does not define any previously undefined public symbols, so it will not be used by any link operation that consumes this library
+		}
+	
+	configuration { "Debug" }
+		links {
+			"d3dx11d",
+		}
+		targetsuffix "-Debug"
+
+	configuration { "Release" }
+		flags {
+			"OptimizeSpeed",
+		}
+		links {
+			"d3dx11",
+		}
+		targetsuffix "-Release"
+
+	configuration { "x32", "vs*" }
+		targetdir (path.join(G_BUILD_DIR, "win32_" .. _ACTION, "bin"))
+		objdir (path.join(G_BUILD_DIR, "win32_" .. _ACTION, "obj"))
+		libdirs {
+			"$(DXSDK_DIR)/lib/x86",
+			--path.join(G_SDL_DIR, "libs/x86"),
+		}
+
+	configuration { "x64", "vs*" }
+		--defines { "_WIN64" }
+		targetdir (path.join(G_BUILD_DIR, "win64_" .. _ACTION, "bin"))
+		objdir (path.join(G_BUILD_DIR, "win64_" .. _ACTION, "obj"))
+		libdirs {
+			"$(DXSDK_DIR)/lib/x64",
+			--path.join(G_SDL_DIR, "libs/x64"),
+		}
+
+	configuration {} -- reset configuration
+
+
+
+group "demos"
+
+project ("BSP-CSG")
+
+	uuid (os.uuid("BSP-CSG"))
+	kind "WindowedApp"
+
+	defines {
+		"WIN32", "_WIN32",
+		"_HAS_EXCEPTIONS=0",
+		"_HAS_ITERATOR_DEBUGGING=0",
+		"_SCL_SECURE=0", "_SECURE_SCL=0",
+		"_SCL_SECURE_NO_WARNINGS",
+		"_CRT_SECURE_NO_WARNINGS",
+		"_CRT_SECURE_NO_DEPRECATE",
+		"MX_AUTOLINK=0",
+	}
+
+	files {
+		path.join(G_ROOT_DIR, "_Demos/**.**"),
 	}
 
 	includedirs {
@@ -497,25 +562,30 @@ project ("demo")
 		path.join(BGFX_DIR, "3rdparty"),
 		path.join(BGFX_DIR, "examples/common"),
 		path.join(BGFX_DIR, G_SDL_DIR, "include"),
-		G_ENGINE_DIR,
-		path.join(G_ROOT_DIR, "stb"),
 	}
 
 	links {
+		-- Windows
 		"gdi32",
 		"psapi",
 		"winmm",	-- timeGetTime()
 		"Dbghelp",	-- MiniDumpWriteDump()
+		"comctl32", "Imm32",
 
-		"SDL2",
+		--"SDL2",
 
+		-- bgfx
 		"bgfx",
 		"example-common",
 
-		"winmm", "comctl32", "Imm32",
-
+		-- Direct3D
 		"DxErr", "dxgi", "dxguid", "d3d11", "d3dcompiler",
+
+		-- Engine
+		"Engine",
 	}
+	
+	debugdir (path.join(G_DEMOS_DIR, "runtime"))
 
 	configuration { "vs*" }
 		linkoptions {
@@ -544,22 +614,23 @@ project ("demo")
 		targetsuffix "-Release"
 
 	configuration { "x32", "vs*" }
-		targetdir (path.join(G_BUILD_DIR, "win32_" .. _ACTION, "bin"))
+		targetdir (path.join(G_BINARIES_DIR, "x86"))
 		objdir (path.join(G_BUILD_DIR, "win32_" .. _ACTION, "obj"))
 		libdirs {
-			targetdir(),
+			path.join(G_BUILD_DIR, "win32_" .. _ACTION, "bin"),
 			"$(DXSDK_DIR)/lib/x86",
-			path.join(G_SDL_DIR, "libs/x86"),
 		}
 
 	configuration { "x64", "vs*" }
 		--defines { "_WIN64" }
-		targetdir (path.join(G_BUILD_DIR, "win64_" .. _ACTION, "bin"))
+		targetdir (path.join(G_BINARIES_DIR, "x64"))
 		objdir (path.join(G_BUILD_DIR, "win64_" .. _ACTION, "obj"))
 		libdirs {
-			targetdir(),
+			path.join(G_BUILD_DIR, "win64_" .. _ACTION, "bin"),
 			"$(DXSDK_DIR)/lib/x64",
-			path.join(G_SDL_DIR, "libs/x64"),
 		}
 
 	configuration {} -- reset configuration
+
+
+startproject "BSP-CSG"

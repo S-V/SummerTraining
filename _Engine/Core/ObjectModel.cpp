@@ -748,6 +748,8 @@ UNDONE;
 
 		it.MoveToNext();
 	}
+
+	return ERR_NOT_IMPLEMENTED;
 }
 
 void Clump::UnloadAssets()

@@ -400,7 +400,17 @@ function toolchain(_buildDir, _libDir)
 			"$(DXSDK_DIR)/lib/x86",
 		}
 
-	configuration { "x64", "vs*" }
+	--NOTE: removed _WIN64 - VS 9.0 won't compile
+	configuration { "x64", "vs2008" }
+		--defines { "_WIN64" }
+		targetdir (path.join(_buildDir, "win64_" .. _ACTION, "bin"))
+		objdir (path.join(_buildDir, "win64_" .. _ACTION, "obj"))
+		libdirs {
+			path.join(_libDir, "lib/win64_" .. _ACTION),
+			"$(DXSDK_DIR)/lib/x64",
+		}
+		
+	configuration { "x64", "vs201*" }
 		defines { "_WIN64" }
 		targetdir (path.join(_buildDir, "win64_" .. _ACTION, "bin"))
 		objdir (path.join(_buildDir, "win64_" .. _ACTION, "obj"))

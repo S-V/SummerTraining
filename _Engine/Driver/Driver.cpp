@@ -17,6 +17,7 @@
 	http://molecularmusings.wordpress.com/2011/09/05/properly-handling-keyboard-input/
 =============================================================================
 */
+#if defined(TB_USE_SDL)
 #include <Driver/Driver_PCH.h>
 #pragma hdrstop
 #include <Core/Event.h>
@@ -831,6 +832,8 @@ namespace WindowsDriver
 	}
 
 }//namespace WindowsDriver
+
+#endif // #if defined(TB_USE_SDL)
 
 //--------------------------------------------------------------//
 //				End Of File.									//
