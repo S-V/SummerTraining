@@ -329,18 +329,14 @@ group "libs"
 -- bgfx library
 bgfxProject("", "StaticLib", {})
 -- bgfx example projects
---[[]]
 group "examples"
 exampleProject("00-helloworld")
---[[]]
 exampleProject("01-cubes")
 exampleProject("02-metaballs")
 exampleProject("03-raymarch")
 exampleProject("04-mesh")
 exampleProject("05-instancing")
-
 exampleProject("06-bump")
---[[
 exampleProject("07-callback")
 exampleProject("08-update")
 exampleProject("09-hdr")
@@ -359,7 +355,7 @@ exampleProject("21-deferred")
 exampleProject("22-windows")
 exampleProject("23-vectordisplay")
 exampleProject("24-nbody")
-
+--[[
 if _OPTIONS["with-tools"] then
 	group "tools"
 	dofile (path.join(BGFX_DIR, "scripts/makedisttex.lua"))
@@ -374,8 +370,6 @@ end
 
 -- engine library
 --CreateProject("Engine", "StaticLib", {})
-
-
 
 
 function DemoProject(_name)
@@ -561,7 +555,8 @@ project ("BSP-CSG")
 		path.join(BGFX_DIR, "include"),
 		path.join(BGFX_DIR, "3rdparty"),
 		path.join(BGFX_DIR, "examples/common"),
-		path.join(BGFX_DIR, G_SDL_DIR, "include"),
+		--path.join(BGFX_DIR, G_SDL_DIR, "include"),
+		G_ENGINE_DIR,
 	}
 
 	links {
