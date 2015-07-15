@@ -374,7 +374,7 @@ L_End:
 		_tcscat_s( exeFileName, lauchExeExtension );
 
 		// set as current directory
-		::SetCurrentDirectory( launchDirectory );
+		//::SetCurrentDirectory( launchDirectory );
 
 		{
 			DWORD size = mxCOUNT_OF(userName);

@@ -1,6 +1,8 @@
 #include <Base/Base.h>
 #include <Core/Core.h>
 
+#include <bgfx.h>
+
 struct CSG_VERTEX
 {
 	Float3 xyz;
