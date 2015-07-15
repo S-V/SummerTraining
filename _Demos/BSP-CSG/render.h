@@ -35,6 +35,7 @@ struct PosNormalTangentTexcoordVertex
 	uint32_t m_tangent;
 	int16_t m_u;
 	int16_t m_v;
+	//24
 
 	static void init()
 	{

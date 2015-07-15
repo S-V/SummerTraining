@@ -207,11 +207,11 @@ private:
 #include "Plane.h"
 
 // Bounding volumes.
-#include "BoundingVolumes/Spatial.h"
-#include "BoundingVolumes/Sphere.h"
-#include "BoundingVolumes/AABB.h"
-#include "BoundingVolumes/OOBB.h"
-#include "BoundingVolumes/ViewFrustum.h"
+//#include "BoundingVolumes/Spatial.h"
+//#include "BoundingVolumes/Sphere.h"
+//#include "BoundingVolumes/AABB.h"
+//#include "BoundingVolumes/OOBB.h"
+//#include "BoundingVolumes/ViewFrustum.h"
 
 // Math Utilities.
 #include "Utils.h"

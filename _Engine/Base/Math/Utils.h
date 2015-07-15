@@ -682,6 +682,7 @@ public:
 	float	a, b;
 };
 
+#if 0
 // http://www.gamasutra.com/features/19991018/Gomez_4.htm (retrieved 2007/04/27)
 // [1] J. Arvo. A simple method for box-sphere intersection testing. In A. Glassner, editor, Graphics Gems, pp. 335-339, Academic Press, Boston, MA, 1990.
 //
@@ -706,7 +707,7 @@ inline FASTBOOL AabbSphereIntersection( const AABB& aabb, const Sphere& sphere )
 	}
 	return ( d <= squaref( sphere.Radius ) );
 }
-
+#endif
 inline bool rayAABBIntersection( const Vec3D &rayOrig, const Vec3D &rayDir, 
 								const Vec3D &mins, const Vec3D &maxs )
 {

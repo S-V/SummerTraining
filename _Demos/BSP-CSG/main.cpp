@@ -2,10 +2,15 @@
  * Copyright 2011-2015 Branimir Karadzic. All rights reserved.
  * License: http://www.opensource.org/licenses/BSD-2-Clause
  */
+#include <Base/Base.h>
+#include <Base/Util/LogUtil.h>
 #include "render.h"
 
 ERet MyEntryPoint()
 {
+	SetupBaseUtil	setupBase;
+	FileLogUtil		fileLog;
+
 	Renderer	renderer;
 	mxDO(renderer.Initialize());
 
@@ -46,8 +51,6 @@ ERet MyEntryPoint()
 		bgfx::dbgTextPrintf(0, 2, 0x6f, "Description: MRT rendering and deferred shading.");
 		bgfx::dbgTextPrintf(0, 3, 0x0f, "Frame: % 7.3f[ms]", double(frameTime)*toMs);
 
-		renderer.BeginFrame( width, height, reset, view, time );
-
 		imguiBeginFrame(mouseState.m_mx
 			, mouseState.m_my
 			, (mouseState.m_buttons[entry::MouseButton::Left  ] ? IMGUI_MBUT_LEFT  : 0)
@@ -86,8 +89,7 @@ ERet MyEntryPoint()
 		cameraUpdate(deltaTime, mouseState);
 		cameraGetViewMtx(view);
 
-//		renderer.BeginFrame();
-
+		renderer.BeginFrame( width, height, reset, view, time );
 		renderer.EndFrame();
 	}
 
