@@ -102,6 +102,7 @@ void screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf
 
 class Renderer
 {
+public:
 	uint32_t width;
 	uint32_t height;
 	uint32_t debug;

@@ -5,6 +5,23 @@
 #include <Base/Base.h>
 #include <Base/Util/LogUtil.h>
 #include "render.h"
+#include "bsp.h"
+
+static bgfx::DynamicVertexBufferHandle g_dynamicVB = BGFX_INVALID_HANDLE;
+static bgfx::DynamicIndexBufferHandle g_dynamicIB = BGFX_INVALID_HANDLE;
+
+static CSG_VERTEX g_planeVertices[4] =
+{
+	//          XYZ              |            N              | T |    U    |  V
+	{ { -100.0f, 0.0f, -100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,       0, 0x7fff },
+	{ { -100.0f, 0.0f,  100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,       0,      0 },
+	{ {  100.0f, 0.0f,  100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  0x7fff,      0 },
+	{ {  100.0f, 0.0f, -100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  0x7fff, 0x7fff },
+};
+
+const UINT16 g_planeIndices[6] = {
+	0, 1, 2, 0, 2, 3,
+};
 
 ERet MyEntryPoint()
 {
@@ -13,6 +30,22 @@ ERet MyEntryPoint()
 
 	Renderer	renderer;
 	mxDO(renderer.Initialize());
+
+
+	CSG_VERTEX::init();
+
+	calcTangents( g_planeVertices, BX_COUNTOF(g_planeVertices), CSG_VERTEX::ms_decl,
+		g_planeIndices, BX_COUNTOF(g_planeIndices) );
+
+	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, CSG_VERTEX::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
+	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
+
+	const bgfx::Memory* vertexMemory = bgfx::makeRef( g_planeVertices, sizeof(g_planeVertices) );
+	const bgfx::Memory* indexMemory = bgfx::makeRef( g_planeIndices, sizeof(g_planeIndices) );
+
+	bgfx::updateDynamicVertexBuffer( g_dynamicVB, 0, vertexMemory );
+	bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );
+
 
 	// Imgui.
 	imguiCreate();
@@ -90,12 +123,50 @@ ERet MyEntryPoint()
 		cameraGetViewMtx(view);
 
 		renderer.BeginFrame( width, height, reset, view, time );
+
+		{
+			// Set transform for draw call.
+			float mtx[16];
+			bx::mtxIdentity(mtx);
+			bgfx::setTransform(mtx);
+
+			// Set vertex and fragment shaders.
+			bgfx::setProgram(renderer.geomProgram);
+
+			// Set vertex and index buffer.
+			bgfx::setVertexBuffer(g_dynamicVB);
+			bgfx::setIndexBuffer(g_dynamicIB);
+
+			// Bind textures.
+			bgfx::setTexture(0, renderer.s_texColor,  renderer.textureColor);
+			bgfx::setTexture(1, renderer.s_texNormal, renderer.textureNormal);
+
+			// Set render states.
+			bgfx::setState(0
+				| BGFX_STATE_RGB_WRITE
+				| BGFX_STATE_ALPHA_WRITE
+				| BGFX_STATE_DEPTH_WRITE
+				| BGFX_STATE_DEPTH_TEST_LESS
+				| BGFX_STATE_MSAA
+				);
+
+			// Submit primitive for rendering to view 0.
+			bgfx::submit(RENDER_PASS_GEOMETRY_ID);
+		}
+
 		renderer.EndFrame();
 	}
 
 	// Cleanup.
 	cameraDestroy();
 	imguiDestroy();
+
+
+	bgfx::destroyDynamicIndexBuffer( g_dynamicIB );
+	bgfx::destroyDynamicVertexBuffer( g_dynamicVB );
+
+	//bgfx::release( indexMemory );
+	//bgfx::release( vertexMemory );
 
 	renderer.Shutdown();
 
