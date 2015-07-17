@@ -168,7 +168,7 @@ const Float4x4 Matrix_LookAt( const Float3& eyePosition, const Float3& cameraTar
 	return result;
 }
 
-// Builds a right-handed look-at matrix.
+// Builds a right-handed look-at (or view) matrix.
 // View transformation matrix transforms world coordinates into camera or view space.
 // 'eyePosition' - camera position
 // 'lookDirection' - camera look direction

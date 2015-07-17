@@ -77,7 +77,7 @@ uint32_t packF4u(float _x, float _y, float _z, float _w)
 	return packUint32(xx, yy, zz, ww);
 }
 
-void screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf, bool _originBottomLeft, float _width, float _height)
+ERet screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf, bool _originBottomLeft, float _width, float _height, float zz)
 {
 	if (bgfx::checkAvailTransientVertexBuffer(3, PosTexCoord0Vertex::ms_decl) )
 	{
@@ -94,8 +94,6 @@ void screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf
 		const float texelHalfH = _texelHalf/_textureHeight;
 		const float minu = -1.0f + texelHalfW;
 		const float maxu =  1.0f + texelHalfH;
-
-		const float zz = 0.0f;
 
 		float minv = texelHalfH;
 		float maxv = 2.0f + texelHalfH;
@@ -129,7 +127,10 @@ void screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf
 		vertex[2].m_v = maxv;
 
 		bgfx::setVertexBuffer(&vb);
+
+		return ALL_OK;
 	}
+	return ERR_OUT_OF_MEMORY;
 }
 
 Renderer::Renderer()
@@ -218,6 +219,9 @@ ERet Renderer::Initialize()
 	u_mtx            = bgfx::createUniform("u_mtx",            bgfx::UniformType::Mat4);
 	u_lightPosRadius = bgfx::createUniform("u_lightPosRadius", bgfx::UniformType::Vec4);
 	u_lightRgbInnerR = bgfx::createUniform("u_lightRgbInnerR", bgfx::UniformType::Vec4);
+	u_lightDirection = bgfx::createUniform("u_lightDirection", bgfx::UniformType::Vec4);
+	u_lightColor     = bgfx::createUniform("u_lightColor",     bgfx::UniformType::Vec4);
+
 
 	// Create program from shaders.
 	geomProgram    = loadProgram("vs_deferred_geom",       "fs_deferred_geom");
@@ -226,11 +230,16 @@ ERet Renderer::Initialize()
 	debugProgram   = loadProgram("vs_deferred_debug",      "fs_deferred_debug");
 	lineProgram    = loadProgram("vs_deferred_debug_line", "fs_deferred_debug_line");
 
+	deferred_directional_light_program = loadProgram(
+		"vs_deferred_directional_light",
+		"fs_deferred_directional_light"
+		);
+
 	// Load diffuse texture.
-	textureColor  = loadTexture("fieldstone-rgba.dds");
+	textureColor  = loadTexture("tiles_WhiteAndGrey_01_diffuse.dds");
 
 	// Load normal texture.
-	textureNormal = loadTexture("fieldstone-n.dds");
+	textureNormal = loadTexture("tiles_WhiteAndGrey_01_normal.dds");
 
 	memset(gbufferTex, bgfx::invalidHandle, sizeof(gbufferTex));
 	gbuffer.idx = bgfx::invalidHandle;
@@ -268,6 +277,9 @@ void Renderer::Shutdown()
 	bgfx::destroyUniform(u_lightPosRadius);
 	bgfx::destroyUniform(u_lightRgbInnerR);
 	bgfx::destroyUniform(u_mtx);
+
+	bgfx::destroyUniform(u_lightDirection);
+	bgfx::destroyUniform(u_lightColor);
 
 	// Shutdown bgfx.
 	bgfx::shutdown();
@@ -320,6 +332,10 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 		bgfx::setViewRect(RENDER_PASS_COMBINE_ID,       0, 0, width, height);
 		bgfx::setViewRect(RENDER_PASS_DEBUG_LIGHTS_ID,  0, 0, width, height);
 		bgfx::setViewRect(RENDER_PASS_DEBUG_GBUFFER_ID, 0, 0, width, height);
+
+		bgfx::setViewClear(RENDER_PASS_GEOMETRY_ID, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH|BGFX_CLEAR_STENCIL, 0, 1.0f, 0);
+		bgfx::setViewClear(RENDER_PASS_LIGHT_ID, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH|BGFX_CLEAR_STENCIL, 0, 1.0f, 0);
+
 
 		bgfx::setViewFrameBuffer(RENDER_PASS_LIGHT_ID, lightBuffer);
 
@@ -387,6 +403,15 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 				| BGFX_STATE_DEPTH_WRITE
 				| BGFX_STATE_DEPTH_TEST_LESS
 				| BGFX_STATE_MSAA
+				);
+
+			bgfx::setStencil(0
+				| BGFX_STENCIL_TEST_ALWAYS         // pass always
+				| BGFX_STENCIL_FUNC_REF(1)         // value = 1
+				| BGFX_STENCIL_FUNC_RMASK(0xff)
+				| BGFX_STENCIL_OP_FAIL_S_REPLACE
+				| BGFX_STENCIL_OP_FAIL_Z_REPLACE
+				| BGFX_STENCIL_OP_PASS_Z_REPLACE   // store the value
 				);
 
 			// Submit primitive for rendering to view 0.
@@ -526,6 +551,31 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 			screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft);
 			bgfx::submit(RENDER_PASS_LIGHT_ID);
 		}
+
+		{
+			Vector4 lightDirection = Vector4_Normalized(Vector4_Set( -1, -1, -1, 0 ));
+			Vector4 lightColor = { 0, 1, 0, 1 };
+			bgfx::setUniform(u_lightDirection, &lightDirection);
+			bgfx::setUniform(u_lightColor, &lightColor);
+			bgfx::setTexture(0, s_normal, gbuffer, 1);
+			bgfx::setTexture(1, s_depth,  gbuffer, 2);
+			bgfx::setProgram(deferred_directional_light_program);
+			bgfx::setState(0
+				| BGFX_STATE_RGB_WRITE
+				| BGFX_STATE_ALPHA_WRITE
+				| BGFX_STATE_BLEND_ADD
+				);
+			bgfx::setStencil(0
+				| BGFX_STENCIL_TEST_NOTEQUAL
+				| BGFX_STENCIL_FUNC_REF(1)
+				| BGFX_STENCIL_FUNC_RMASK(0xFF)
+				| BGFX_STENCIL_OP_FAIL_S_KEEP
+				| BGFX_STENCIL_OP_FAIL_Z_KEEP
+				| BGFX_STENCIL_OP_PASS_Z_KEEP
+				);
+			screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft, 1.0f);
+			bgfx::submit(RENDER_PASS_LIGHT_ID);
+		}
 	}
 
 	// Combine color and light buffers.
@@ -552,7 +602,6 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 				, 0.0f, 0.0f, 0.0f
 				, -7.9f - BX_COUNTOF(gbufferTex)*0.1f*0.5f + ii*2.1f*aspectRatio, 4.0f, 0.0f
 				);
-
 			bgfx::setTransform(mtx);
 			bgfx::setProgram(debugProgram);
 			bgfx::setVertexBuffer(vbh);

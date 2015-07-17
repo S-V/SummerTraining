@@ -97,7 +97,7 @@ uint32_t packF4u(float _x, float _y = 0.0f, float _z = 0.0f, float _w = 0.0f);
 extern PosNormalTangentTexcoordVertex s_cubeVertices[24];
 extern const uint16_t s_cubeIndices[36];
 
-void screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf, bool _originBottomLeft, float _width = 1.0f, float _height = 1.0f);
+ERet screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf, bool _originBottomLeft, float _width = 1.0f, float _height = 1.0f, float zz = 0.0f);
 
 
 class Renderer
@@ -111,10 +111,8 @@ public:
 	bgfx::VertexBufferHandle vbh;
 	bgfx::IndexBufferHandle ibh;
 
-	// Create texture sampler uniforms.
 	bgfx::UniformHandle s_texColor;
 	bgfx::UniformHandle s_texNormal;
-
 	bgfx::UniformHandle s_albedo;
 	bgfx::UniformHandle s_normal;
 	bgfx::UniformHandle s_depth;
@@ -123,18 +121,18 @@ public:
 	bgfx::UniformHandle u_mtx;
 	bgfx::UniformHandle u_lightPosRadius;
 	bgfx::UniformHandle u_lightRgbInnerR;
+	bgfx::UniformHandle u_lightDirection;
+	bgfx::UniformHandle u_lightColor;
 
-	// Create program from shaders.
 	bgfx::ProgramHandle geomProgram;
 	bgfx::ProgramHandle lightProgram;
 	bgfx::ProgramHandle combineProgram;
 	bgfx::ProgramHandle debugProgram;
 	bgfx::ProgramHandle lineProgram;
 
-	// Load diffuse texture.
-	bgfx::TextureHandle textureColor;
+	bgfx::ProgramHandle deferred_directional_light_program;
 
-	// Load normal texture.
+	bgfx::TextureHandle textureColor;
 	bgfx::TextureHandle textureNormal;
 
 	bgfx::TextureHandle gbufferTex[3];
