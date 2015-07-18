@@ -28,6 +28,7 @@ ERet MyEntryPoint()
 	SetupBaseUtil	setupBase;
 	FileLogUtil		fileLog;
 
+
 	Renderer	renderer;
 	mxDO(renderer.Initialize());
 
@@ -55,7 +56,7 @@ ERet MyEntryPoint()
 	int32_t scrollArea = 0;
 
 	float view[16];
-	float initialPos[3] = { 0.0f, 0.0f, -15.0f };
+	float initialPos[3] = { 0.0f, 10.0f, -15.0f };
 	cameraCreate();
 	cameraSetPosition(initialPos);
 	cameraSetVerticalAngle(0.0f);

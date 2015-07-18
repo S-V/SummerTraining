@@ -327,8 +327,9 @@ dofile (path.join(BGFX_DIR, "scripts/example-common.lua"))
 
 group "libs"
 -- bgfx library
-bgfxProject("", "StaticLib", {})
+bgfxProject("", "StaticLib", {"BGFX_CONFIG_RENDERER_DIRECT3D11=1"})
 -- bgfx example projects
+--[[
 group "examples"
 exampleProject("00-helloworld")
 exampleProject("01-cubes")
@@ -355,7 +356,7 @@ exampleProject("21-deferred")
 exampleProject("22-windows")
 exampleProject("23-vectordisplay")
 exampleProject("24-nbody")
---[[
+
 if _OPTIONS["with-tools"] then
 	group "tools"
 	dofile (path.join(BGFX_DIR, "scripts/makedisttex.lua"))

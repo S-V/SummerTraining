@@ -44,9 +44,24 @@ vec3 clipToWorld(mat4 _invViewProj, vec3 _clipPos)
 	return wpos.xyz / wpos.w;
 }
 
+// Converts hardware depth buffer value (Z / W) into (1 / W).
+// This is used for restoring view-space depth and position.
+float HardwareDepthToInverseW( float z )
+{
+	return 1 / (z * u_invProj._m32 + u_invProj._m33);
+}
+
 void main()
 {
 	vec3  normal      = decodeNormalUint(texture2D(s_normal, v_texcoord0).xyz);
+
+//	float d = dot(normal,u_lightDirection);
+//	d = clamp(d,0,1);
+	float d = max(dot(normal,-u_lightDirection),0);
+
+	vec3 rgb = u_lightColor.xyz * 0.5f * saturate(d);
+
+#if 0
 	float deviceDepth = texture2D(s_depth,  v_texcoord0).x;
 	float depth       = toClipSpaceDepth(deviceDepth);
 
@@ -54,6 +69,12 @@ void main()
 #if BGFX_SHADER_LANGUAGE_HLSL
 	clip.y = -clip.y;
 #endif // BGFX_SHADER_LANGUAGE_HLSL
+
+	// recover view-space depth
+	float3 viewSpacePosition = vec3( _inputs.viewPosition.x, 1, _inputs.viewPosition.y )
+								* HardwareDepthToInverseW( deviceDepth );
+
+
 	vec3 wpos = clipToWorld(u_invViewProj, clip);
 
 	vec3 eyePos = u_invView[3].xyz;
@@ -61,7 +82,8 @@ void main()
 	vec2 bln = blinn(u_lightDirection, normal, viewDir);
 	vec4 lc = lit(bln.x, bln.y, 1.0);
 	vec3 rgb = u_lightColor.xyz * saturate(lc.y);
-
+#endif // 0
+	
 	gl_FragColor.xyz = toGamma(rgb.xyz);
 	gl_FragColor.w = 1.0;
 }

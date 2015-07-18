@@ -158,6 +158,24 @@ ERet Renderer::Initialize()
 	g_texelHalf = bgfx::RendererType::Direct3D9 == renderer ? 0.5f : 0.0f;
 	g_originBottomLeft = bgfx::RendererType::OpenGL == renderer || bgfx::RendererType::OpenGLES == renderer;
 
+	const char* rendererType = "Unknown";
+	switch (bgfx::getRendererType() )
+	{
+	case bgfx::RendererType::Direct3D9:
+		rendererType = "Direct3D 9";
+		break;
+	case bgfx::RendererType::Direct3D11:
+		rendererType = "Direct3D 11";
+		break;
+	case bgfx::RendererType::Direct3D12:
+		rendererType = "Direct3D 12";
+		break;
+	case bgfx::RendererType::OpenGL:
+		rendererType = "OpenGL";
+		break;
+	}
+	ptPRINT("Using renderer: '%s'", rendererType);
+
 
 	bgfx::reset(width, height, reset);
 
@@ -236,10 +254,12 @@ ERet Renderer::Initialize()
 		);
 
 	// Load diffuse texture.
-	textureColor  = loadTexture("tiles_WhiteAndGrey_01_diffuse.dds");
+//	textureColor  = loadTexture("tiles_WhiteAndGrey_01_diffuse.dds");
+	textureColor  = loadTexture("fieldstone-rgba.dds");
 
 	// Load normal texture.
-	textureNormal = loadTexture("tiles_WhiteAndGrey_01_normal.dds");
+//	textureNormal = loadTexture("tiles_WhiteAndGrey_01_normal.dds");
+	textureNormal = loadTexture("fieldstone-n.dds");
 
 	memset(gbufferTex, bgfx::invalidHandle, sizeof(gbufferTex));
 	gbuffer.idx = bgfx::invalidHandle;
@@ -552,8 +572,9 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 			bgfx::submit(RENDER_PASS_LIGHT_ID);
 		}
 
+		if(0)
 		{
-			Vector4 lightDirection = Vector4_Normalized(Vector4_Set( -1, -1, -1, 0 ));
+			Vector4 lightDirection = { 0, -1, 0, 0 };//Vector4_Normalized(Vector4_Set( -1, -1, -1, 0 ));
 			Vector4 lightColor = { 0, 1, 0, 1 };
 			bgfx::setUniform(u_lightDirection, &lightDirection);
 			bgfx::setUniform(u_lightColor, &lightColor);
