@@ -11,12 +11,11 @@ struct Vertex
 	Float3 xyz;
 	UINT32 N;
 	UINT32 T;
-	INT16 U;
-	INT16 V;
-	float c1;
-	float c2;
+	Float2 UV;
+	float c;
 	//!32
-
+public:
+	static bgfx::VertexDecl ms_decl;
 	static void init()
 	{
 		ms_decl
@@ -24,14 +23,13 @@ struct Vertex
 			.add(bgfx::Attrib::Position,  3, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::Normal,    4, bgfx::AttribType::Uint8, true, true)
 			.add(bgfx::Attrib::Tangent,   4, bgfx::AttribType::Uint8, true, true)
-			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Int16, true, true)
+			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
 			.add(bgfx::Attrib::Color0,    1, bgfx::AttribType::Float)
-			.add(bgfx::Attrib::Color1,    1, bgfx::AttribType::Float)
 			.end();
 	}
-
-	static bgfx::VertexDecl ms_decl;
 };
+mxDECLARE_STRUCT(Vertex);
+mxDECLARE_POD_TYPE(Vertex);
 
 //
 //	EPlaneSide - spatial relation to a plane.
@@ -64,10 +62,6 @@ enum EPlaneType
 
 struct ATriangleIndexCallback
 {
-	struct Vertex {
-		Float3 xyz;
-		Float2 st;
-	};
 	virtual void ProcessTriangle( const Vertex& a, const Vertex& b, const Vertex& c ) = 0;
 	virtual ~ATriangleIndexCallback() {}
 };
@@ -93,19 +87,11 @@ public:
 	mxDECLARE_CLASS(Node,CStruct);
 	mxDECLARE_REFLECTION;
 };
-struct BspVertex : public CStruct
-{
-	Float3	xyz;	//«12
-	Half2	st;		//«4 16-bit floats in range [0..1]
-public:
-	mxDECLARE_CLASS(BspVertex,CStruct);
-	mxDECLARE_REFLECTION;
-};
 struct Poly : public CStruct
 {
-	TArray< BspVertex >	vertices;
+	TArray< Vertex >	vertices;
 	BspPolyID			next;
-	BspVertex			buffer[8];	//«128 small embedded storage to avoid memory allocations
+	Vertex				buffer[8];	//«128 small embedded storage to avoid memory allocations
 public:
 	mxDECLARE_CLASS(Poly,CStruct);
 	mxDECLARE_REFLECTION;

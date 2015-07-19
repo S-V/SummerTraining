@@ -13,11 +13,11 @@ static bgfx::DynamicIndexBufferHandle g_dynamicIB = BGFX_INVALID_HANDLE;
 
 static BSP::Vertex g_planeVertices[4] =
 {
-	//          XYZ              |            N              | T |    U    |  V
-	{ { -100.0f, 0.0f, -100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,       0, 0x7fff },
-	{ { -100.0f, 0.0f,  100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,       0,      0 },
-	{ {  100.0f, 0.0f,  100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  0x7fff,      0 },
-	{ {  100.0f, 0.0f, -100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  0x7fff, 0x7fff },
+	//          XYZ              |            N              | T |    U  |  V
+	{ { -100.0f, 0.0f, -100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  {    0, 1.0f }, 0, },
+	{ { -100.0f, 0.0f,  100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  {    0,    0 }, 0, },
+	{ {  100.0f, 0.0f,  100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  { 1.0f,    0 }, 0, },
+	{ {  100.0f, 0.0f, -100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  { 1.0f, 1.0f }, 0, },
 };
 
 const UINT16 g_planeIndices[6] = {
@@ -33,11 +33,33 @@ ERet MyEntryPoint()
 	Renderer	renderer;
 	mxDO(renderer.Initialize());
 
-
 	BSP::Vertex::init();
 
 	calcTangents( g_planeVertices, BX_COUNTOF(g_planeVertices), BSP::Vertex::ms_decl,
 		g_planeIndices, BX_COUNTOF(g_planeIndices) );
+
+	BSP::Tree	tree;
+	{
+		using namespace BSP;
+		struct EnumerateMeshVertices : ATriangleMeshInterface
+		{
+			virtual void ProcessAllTriangles( ATriangleIndexCallback* callback ) override
+			{
+				callback->ProcessTriangle(
+					g_planeVertices[ g_planeIndices[0] ],
+					g_planeVertices[ g_planeIndices[1] ],
+					g_planeVertices[ g_planeIndices[2] ]
+					);
+				callback->ProcessTriangle(
+					g_planeVertices[ g_planeIndices[3] ],
+					g_planeVertices[ g_planeIndices[4] ],
+					g_planeVertices[ g_planeIndices[5] ]
+					);
+			}
+		} enumerateMeshVertices;
+		
+		tree.Build( &enumerateMeshVertices );
+	}
 
 	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );

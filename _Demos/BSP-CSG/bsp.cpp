@@ -3,6 +3,17 @@
 namespace BSP
 {
 
+#define UnpackUV( UV )	UV
+#define PackUV( UV )	UV
+
+mxBEGIN_STRUCT(Vertex)
+	mxMEMBER_FIELD( xyz ),
+	mxMEMBER_FIELD( N ),
+	mxMEMBER_FIELD( T ),
+	mxMEMBER_FIELD( UV ),
+	mxMEMBER_FIELD( c ),
+mxEND_REFLECTION;
+
 bgfx::VertexDecl Vertex::ms_decl;
 
 #define THICK_PLANE_SIDE_EPSILON	(0.25f)
@@ -44,12 +55,6 @@ mxBEGIN_REFLECTION(Node)
 	mxMEMBER_FIELD( front ),
 	mxMEMBER_FIELD( back ),
 	mxMEMBER_FIELD( polys ),
-mxEND_REFLECTION;
-
-mxDEFINE_CLASS(BspVertex);
-mxBEGIN_REFLECTION(BspVertex)
-	mxMEMBER_FIELD( xyz ),
-	mxMEMBER_FIELD( st ),
 mxEND_REFLECTION;
 
 mxDEFINE_CLASS(Poly);
@@ -167,9 +172,9 @@ Vector4 PlaneFromPoints( const Float3& a, const Float3& b, const Float3& c )
 Vector4 PlaneFromPolygon( const Poly& polygon )
 {
 	mxASSERT(polygon.vertices.Num() >= 3);
-	const BspVertex& a = polygon.vertices[0];
-	const BspVertex& b = polygon.vertices[1];
-	const BspVertex& c = polygon.vertices[2];
+	const Vertex& a = polygon.vertices[0];
+	const Vertex& b = polygon.vertices[1];
+	const Vertex& c = polygon.vertices[2];
 	return PlaneFromPoints( a.xyz, b.xyz, c.xyz );
 }
 
@@ -197,7 +202,7 @@ inline bool Planes_Equal( const Vector4 &a, const Vector4 &b, const float normal
 static
 EPolyStatus ClassifyPolygon(
 							const Vector4& plane,
-							const BspVertex* verts, const UINT32 numVerts,
+							const Vertex* verts, const UINT32 numVerts,
 							const float epsilon = 0.013f )
 {
 	UINT32	numPointsInFront = 0;
@@ -341,7 +346,7 @@ EPlaneSide SplitConvexPolygonByPlane(
 							   )
 {
 	const int numPoints = polygon.vertices.Num();
-	const BspVertex* p = polygon.vertices.ToPtr();
+	const Vertex* p = polygon.vertices.ToPtr();
 
 	float *	dists = (float *) _alloca( (numPoints+4) * sizeof( float ) );
 	BYTE *	sides = (BYTE *) _alloca( (numPoints+4) * sizeof( BYTE ) );
@@ -406,7 +411,7 @@ EPlaneSide SplitConvexPolygonByPlane(
 
 	for ( int i = 0; i < numPoints; i++)
 	{
-		const BspVertex* p1 = &p[i];
+		const Vertex* p1 = &p[i];
 
 		if ( sides[i] == PLANESIDE_ON ) {
 			front.vertices.Add( *p1 );
@@ -427,11 +432,11 @@ EPlaneSide SplitConvexPolygonByPlane(
 		}
 
 		// generate a split point
-		const BspVertex* p2 = &p[(i+1)%numPoints];
+		const Vertex* p2 = &p[(i+1)%numPoints];
 
 		// always calculate the split going from the same side
 		// or minor epsilon issues can happen
-		BspVertex mid;
+		Vertex mid;
 		if ( sides[i] == PLANESIDE_FRONT ) {
 			float dot = dists[i] / ( dists[i] - dists[i+1] );
 			for ( int j = 0; j < 3; j++ ) {
@@ -444,9 +449,9 @@ EPlaneSide SplitConvexPolygonByPlane(
 					mid.xyz[j] = (*p1).xyz[j] + dot * ( (*p2).xyz[j] - (*p1).xyz[j] );
 				}
 			}
-			const Float2 p1st = Half2_To_Float2( p1->st );
-			const Float2 p2st = Half2_To_Float2( p2->st );
-			mid.st = Float2_To_Half2( p1st + ( p2st - p1st ) * dot );
+			const Float2 p1st = UnpackUV( p1->UV );
+			const Float2 p2st = UnpackUV( p2->UV );
+			mid.UV = PackUV( p1st + ( p2st - p1st ) * dot );
 		} else {
 			float dot = dists[i+1] / ( dists[i+1] - dists[i] );
 			for ( int j = 0; j < 3; j++ ) {	
@@ -459,9 +464,9 @@ EPlaneSide SplitConvexPolygonByPlane(
 					mid.xyz[j] = (*p2).xyz[j] + dot * ( (*p1).xyz[j] - (*p2).xyz[j] );
 				}
 			}
-			const Float2 p1st = Half2_To_Float2( p1->st );
-			const Float2 p2st = Half2_To_Float2( p2->st );
-			mid.st = Float2_To_Half2( p2st + ( p1st - p2st ) * dot );
+			const Float2 p1st = UnpackUV( p1->UV );
+			const Float2 p2st = UnpackUV( p2->UV );
+			mid.UV = PackUV( p2st + ( p1st - p2st ) * dot );
 		}
 
 		front.vertices.Add( mid );
@@ -677,8 +682,8 @@ static UINT32 PartitionPolygons(
 
 		if( iPoly != bestSplitter )
 		{
-			BspVertex	buffer1[64];
-			BspVertex	buffer2[64];
+			Vertex	buffer1[64];
+			Vertex	buffer2[64];
 
 			Poly		frontPoly;
 			Poly		backPoly;
@@ -777,18 +782,15 @@ ERet Tree::Build( ATriangleMeshInterface* triangleMesh )
 		{}
 		virtual void ProcessTriangle( const Vertex& a, const Vertex& b, const Vertex& c ) override
 		{
-			Poly & triangle = m_tree.m_polys.Add();
-			triangle.vertices.SetNum(3);
-			BspVertex & v1 = triangle.vertices[0];
-			BspVertex & v2 = triangle.vertices[1];
-			BspVertex & v3 = triangle.vertices[2];
-			v1.xyz = a.xyz;
-			v2.xyz = b.xyz;
-			v3.xyz = c.xyz;
-			v1.st = Float2_To_Half2(a.st);
-			v2.st = Float2_To_Half2(b.st);
-			v3.st = Float2_To_Half2(c.st);
-			triangle.next = BSP_NONE;
+			Poly & newPoly = m_tree.m_polys.Add();
+			newPoly.vertices.SetNum(3);
+			Vertex & v1 = newPoly.vertices[0];
+			Vertex & v2 = newPoly.vertices[1];
+			Vertex & v3 = newPoly.vertices[2];
+			v1 = a;
+			v2 = b;
+			v3 = c;
+			newPoly.next = BSP_NONE;
 		}
 	};
 
