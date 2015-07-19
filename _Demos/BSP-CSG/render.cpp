@@ -1,3 +1,8 @@
+//based on
+/*
+ * Copyright 2011-2015 Branimir Karadzic. All rights reserved.
+ * License: http://www.opensource.org/licenses/BSD-2-Clause
+ */
 #include "render.h"
 
 float g_texelHalf = 0;
@@ -237,9 +242,10 @@ ERet Renderer::Initialize()
 	u_mtx            = bgfx::createUniform("u_mtx",            bgfx::UniformType::Mat4);
 	u_lightPosRadius = bgfx::createUniform("u_lightPosRadius", bgfx::UniformType::Vec4);
 	u_lightRgbInnerR = bgfx::createUniform("u_lightRgbInnerR", bgfx::UniformType::Vec4);
-	u_lightDirection = bgfx::createUniform("u_lightDirection", bgfx::UniformType::Vec4);
-	u_lightColor     = bgfx::createUniform("u_lightColor",     bgfx::UniformType::Vec4);
 
+	u_lightVector    = bgfx::createUniform("u_lightVector",    bgfx::UniformType::Vec4);
+	u_lightColor     = bgfx::createUniform("u_lightColor",     bgfx::UniformType::Vec4);
+	u_inverseViewMat = bgfx::createUniform("u_inverseViewMat", bgfx::UniformType::Mat4);
 
 	// Create program from shaders.
 	geomProgram    = loadProgram("vs_deferred_geom",       "fs_deferred_geom");
@@ -247,6 +253,7 @@ ERet Renderer::Initialize()
 	combineProgram = loadProgram("vs_deferred_combine",    "fs_deferred_combine");
 	debugProgram   = loadProgram("vs_deferred_debug",      "fs_deferred_debug");
 	lineProgram    = loadProgram("vs_deferred_debug_line", "fs_deferred_debug_line");
+	forwardProgram = loadProgram("vs_forward",             "fs_forward");
 
 	deferred_directional_light_program = loadProgram(
 		"vs_deferred_directional_light",
@@ -254,12 +261,12 @@ ERet Renderer::Initialize()
 		);
 
 	// Load diffuse texture.
-//	textureColor  = loadTexture("tiles_WhiteAndGrey_01_diffuse.dds");
-	textureColor  = loadTexture("fieldstone-rgba.dds");
+	textureColor  = loadTexture("tiles_WhiteAndGrey_01_diffuse.dds");
+//	textureColor  = loadTexture("fieldstone-rgba.dds");
 
 	// Load normal texture.
-//	textureNormal = loadTexture("tiles_WhiteAndGrey_01_normal.dds");
-	textureNormal = loadTexture("fieldstone-n.dds");
+	textureNormal = loadTexture("tiles_WhiteAndGrey_01_normal.dds");
+//	textureNormal = loadTexture("fieldstone-n.dds");
 
 	memset(gbufferTex, bgfx::invalidHandle, sizeof(gbufferTex));
 	gbuffer.idx = bgfx::invalidHandle;
@@ -298,8 +305,9 @@ void Renderer::Shutdown()
 	bgfx::destroyUniform(u_lightRgbInnerR);
 	bgfx::destroyUniform(u_mtx);
 
-	bgfx::destroyUniform(u_lightDirection);
+	bgfx::destroyUniform(u_lightVector);
 	bgfx::destroyUniform(u_lightColor);
+	bgfx::destroyUniform(u_inverseViewMat);
 
 	// Shutdown bgfx.
 	bgfx::shutdown();
@@ -330,9 +338,9 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 			| BGFX_TEXTURE_U_CLAMP
 			| BGFX_TEXTURE_V_CLAMP
 			;
-		gbufferTex[0] = bgfx::createTexture2D(width, height, 1, bgfx::TextureFormat::BGRA8, samplerFlags);
-		gbufferTex[1] = bgfx::createTexture2D(width, height, 1, bgfx::TextureFormat::BGRA8, samplerFlags);
-		gbufferTex[2] = bgfx::createTexture2D(width, height, 1, bgfx::TextureFormat::D24,   samplerFlags);
+		gbufferTex[RT_DEPTH] = bgfx::createTexture2D(width, height, 1, bgfx::TextureFormat::D24,   samplerFlags);
+		gbufferTex[RT_ALBEDO] = bgfx::createTexture2D(width, height, 1, bgfx::TextureFormat::BGRA8, samplerFlags);
+		gbufferTex[RT_NORMALS] = bgfx::createTexture2D(width, height, 1, bgfx::TextureFormat::BGRA8, samplerFlags);
 		gbuffer = bgfx::createFrameBuffer(BX_COUNTOF(gbufferTex), gbufferTex, true);
 
 		if (bgfx::isValid(lightBuffer) )
@@ -346,21 +354,29 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 	// Setup views
 	float vp[16];
 	float invMvp[16];
+	float invView[16];
+	bx::mtxInverse(invView, view);
+
+#if 1
+
 	{
 		bgfx::setViewRect(RENDER_PASS_GEOMETRY_ID,      0, 0, width, height);
 		bgfx::setViewRect(RENDER_PASS_LIGHT_ID,         0, 0, width, height);
+		bgfx::setViewRect(RENDER_PASS_GLOBAL_LIGHT,     0, 0, width, height);
 		bgfx::setViewRect(RENDER_PASS_COMBINE_ID,       0, 0, width, height);
 		bgfx::setViewRect(RENDER_PASS_DEBUG_LIGHTS_ID,  0, 0, width, height);
 		bgfx::setViewRect(RENDER_PASS_DEBUG_GBUFFER_ID, 0, 0, width, height);
 
 		bgfx::setViewClear(RENDER_PASS_GEOMETRY_ID, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH|BGFX_CLEAR_STENCIL, 0, 1.0f, 0);
 		bgfx::setViewClear(RENDER_PASS_LIGHT_ID, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH|BGFX_CLEAR_STENCIL, 0, 1.0f, 0);
+		bgfx::setViewClear(RENDER_PASS_GLOBAL_LIGHT, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH|BGFX_CLEAR_STENCIL, 0, 1.0f, 0);
 
 
 		bgfx::setViewFrameBuffer(RENDER_PASS_LIGHT_ID, lightBuffer);
+		bgfx::setViewFrameBuffer(RENDER_PASS_GLOBAL_LIGHT, lightBuffer);
 
 		float proj[16];
-		mtxProj(proj, 60.0f, float(width)/float(height), 0.1f, 100.0f);
+		mtxProj(proj, 60.0f, float(width)/float(height), 0.5f, 1000.0f);
 
 		bgfx::setViewFrameBuffer(RENDER_PASS_GEOMETRY_ID, gbuffer);
 		bgfx::setViewTransform(RENDER_PASS_GEOMETRY_ID, view, proj);
@@ -368,8 +384,9 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 		bx::mtxMul(vp, view, proj);
 		bx::mtxInverse(invMvp, vp);
 
-		bx::mtxOrtho(proj, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 100.0f);
+		bx::mtxOrtho(proj, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1000.0f);
 		bgfx::setViewTransform(RENDER_PASS_LIGHT_ID,   NULL, proj);
+		bgfx::setViewTransform(RENDER_PASS_GLOBAL_LIGHT, view, proj);
 		bgfx::setViewTransform(RENDER_PASS_COMBINE_ID, NULL, proj);
 
 		const float aspectRatio = float(height)/float(width);
@@ -406,6 +423,7 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 			bgfx::setTransform(mtx);
 
 			// Set vertex and fragment shaders.
+			bgfx::setUniform(u_inverseViewMat, invView);
 			bgfx::setProgram(geomProgram);
 
 			// Set vertex and index buffer.
@@ -440,167 +458,184 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 	}
 
 	// Draw lights into light buffer.
-	for (int32_t light = 0; light < numLights; ++light)
+	if(0)
 	{
-		Sphere lightPosRadius;
-
-		float lightTime = time * lightAnimationSpeed * (sinf(light/float(numLights) * bx::piHalf ) * 0.5f + 0.5f);
-		lightPosRadius.m_center[0] = sinf( ( (lightTime + light*0.47f) + bx::piHalf*1.37f ) )*offset;
-		lightPosRadius.m_center[1] = cosf( ( (lightTime + light*0.69f) + bx::piHalf*1.49f ) )*offset;
-		lightPosRadius.m_center[2] = sinf( ( (lightTime + light*0.37f) + bx::piHalf*1.57f ) )*2.0f;
-		lightPosRadius.m_radius = 2.0f;
-
-		Aabb aabb;
-		sphereToAabb(aabb, lightPosRadius);
-
-		float box[8][3] =
+		for (int32_t light = 0; light < numLights; ++light)
 		{
-			{ aabb.m_min[0], aabb.m_min[1], aabb.m_min[2] },
-			{ aabb.m_min[0], aabb.m_min[1], aabb.m_max[2] },
-			{ aabb.m_min[0], aabb.m_max[1], aabb.m_min[2] },
-			{ aabb.m_min[0], aabb.m_max[1], aabb.m_max[2] },
-			{ aabb.m_max[0], aabb.m_min[1], aabb.m_min[2] },
-			{ aabb.m_max[0], aabb.m_min[1], aabb.m_max[2] },
-			{ aabb.m_max[0], aabb.m_max[1], aabb.m_min[2] },
-			{ aabb.m_max[0], aabb.m_max[1], aabb.m_max[2] },
-		};
+			Sphere lightPosRadius;
 
-		float xyz[3];
-		bx::vec3MulMtxH(xyz, box[0], vp);
-		float minx = xyz[0];
-		float miny = xyz[1];
-		float maxx = xyz[0];
-		float maxy = xyz[1];
-		float maxz = xyz[2];
+			float lightTime = time * lightAnimationSpeed * (sinf(light/float(numLights) * bx::piHalf ) * 0.5f + 0.5f);
+			lightPosRadius.m_center[0] = sinf( ( (lightTime + light*0.47f) + bx::piHalf*1.37f ) )*offset;
+			lightPosRadius.m_center[1] = cosf( ( (lightTime + light*0.69f) + bx::piHalf*1.49f ) )*offset;
+			lightPosRadius.m_center[2] = sinf( ( (lightTime + light*0.37f) + bx::piHalf*1.57f ) )*2.0f;
+			lightPosRadius.m_radius = 2.0f;
 
-		for (uint32_t ii = 1; ii < 8; ++ii)
-		{
-			bx::vec3MulMtxH(xyz, box[ii], vp);
-			minx = bx::fmin(minx, xyz[0]);
-			miny = bx::fmin(miny, xyz[1]);
-			maxx = bx::fmax(maxx, xyz[0]);
-			maxy = bx::fmax(maxy, xyz[1]);
-			maxz = bx::fmax(maxz, xyz[2]);
-		}
+			Aabb aabb;
+			sphereToAabb(aabb, lightPosRadius);
 
-		// Cull light if it's fully behind camera.
-		if (maxz >= 0.0f)
-		{
-			float x0 = bx::fclamp( (minx * 0.5f + 0.5f) * width,  0.0f, (float)width);
-			float y0 = bx::fclamp( (miny * 0.5f + 0.5f) * height, 0.0f, (float)height);
-			float x1 = bx::fclamp( (maxx * 0.5f + 0.5f) * width,  0.0f, (float)width);
-			float y1 = bx::fclamp( (maxy * 0.5f + 0.5f) * height, 0.0f, (float)height);
-
-			if (showScissorRects)
+			float box[8][3] =
 			{
-				bgfx::TransientVertexBuffer tvb;
-				bgfx::TransientIndexBuffer tib;
-				if (bgfx::allocTransientBuffers(&tvb, DebugVertex::ms_decl, 4, &tib, 8) )
-				{
-					uint32_t abgr = 0x8000ff00;
-
-					DebugVertex* vertex = (DebugVertex*)tvb.data;
-					vertex->m_x = x0;
-					vertex->m_y = y0;
-					vertex->m_z = 0.0f;
-					vertex->m_abgr = abgr;
-					++vertex;
-
-					vertex->m_x = x1;
-					vertex->m_y = y0;
-					vertex->m_z = 0.0f;
-					vertex->m_abgr = abgr;
-					++vertex;
-
-					vertex->m_x = x1;
-					vertex->m_y = y1;
-					vertex->m_z = 0.0f;
-					vertex->m_abgr = abgr;
-					++vertex;
-
-					vertex->m_x = x0;
-					vertex->m_y = y1;
-					vertex->m_z = 0.0f;
-					vertex->m_abgr = abgr;
-
-					uint16_t* indices = (uint16_t*)tib.data;
-					*indices++ = 0;
-					*indices++ = 1;
-					*indices++ = 1;
-					*indices++ = 2;
-					*indices++ = 2;
-					*indices++ = 3;
-					*indices++ = 3;
-					*indices++ = 0;
-
-					bgfx::setProgram(lineProgram);
-					bgfx::setVertexBuffer(&tvb);
-					bgfx::setIndexBuffer(&tib);
-					bgfx::setState(0
-						| BGFX_STATE_RGB_WRITE
-						| BGFX_STATE_PT_LINES
-						| BGFX_STATE_BLEND_ALPHA
-						);
-					bgfx::submit(RENDER_PASS_DEBUG_LIGHTS_ID);
-				}
-			}
-
-			uint8_t val = light&7;
-			float lightRgbInnerR[4] =
-			{
-				val & 0x1 ? 1.0f : 0.25f,
-				val & 0x2 ? 1.0f : 0.25f,
-				val & 0x4 ? 1.0f : 0.25f,
-				0.8f,
+				{ aabb.m_min[0], aabb.m_min[1], aabb.m_min[2] },
+				{ aabb.m_min[0], aabb.m_min[1], aabb.m_max[2] },
+				{ aabb.m_min[0], aabb.m_max[1], aabb.m_min[2] },
+				{ aabb.m_min[0], aabb.m_max[1], aabb.m_max[2] },
+				{ aabb.m_max[0], aabb.m_min[1], aabb.m_min[2] },
+				{ aabb.m_max[0], aabb.m_min[1], aabb.m_max[2] },
+				{ aabb.m_max[0], aabb.m_max[1], aabb.m_min[2] },
+				{ aabb.m_max[0], aabb.m_max[1], aabb.m_max[2] },
 			};
 
-			// Draw light.
-			bgfx::setUniform(u_lightPosRadius, &lightPosRadius);
-			bgfx::setUniform(u_lightRgbInnerR, lightRgbInnerR);
-			bgfx::setUniform(u_mtx, invMvp);
-			const uint16_t scissorHeight = uint16_t(y1-y0);
-			bgfx::setScissor(uint16_t(x0), height-scissorHeight-uint16_t(y0), uint16_t(x1-x0), scissorHeight);
-			bgfx::setTexture(0, s_normal, gbuffer, 1);
-			bgfx::setTexture(1, s_depth,  gbuffer, 2);
-			bgfx::setProgram(lightProgram);
-			bgfx::setState(0
-				| BGFX_STATE_RGB_WRITE
-				| BGFX_STATE_ALPHA_WRITE
-				| BGFX_STATE_BLEND_ADD
-				);
-			screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft);
-			bgfx::submit(RENDER_PASS_LIGHT_ID);
-		}
+			float xyz[3];
+			bx::vec3MulMtxH(xyz, box[0], vp);
+			float minx = xyz[0];
+			float miny = xyz[1];
+			float maxx = xyz[0];
+			float maxy = xyz[1];
+			float maxz = xyz[2];
 
-		if(0)
-		{
-			Vector4 lightDirection = { 0, -1, 0, 0 };//Vector4_Normalized(Vector4_Set( -1, -1, -1, 0 ));
-			Vector4 lightColor = { 0, 1, 0, 1 };
-			bgfx::setUniform(u_lightDirection, &lightDirection);
-			bgfx::setUniform(u_lightColor, &lightColor);
-			bgfx::setTexture(0, s_normal, gbuffer, 1);
-			bgfx::setTexture(1, s_depth,  gbuffer, 2);
-			bgfx::setProgram(deferred_directional_light_program);
-			bgfx::setState(0
-				| BGFX_STATE_RGB_WRITE
-				| BGFX_STATE_ALPHA_WRITE
-				| BGFX_STATE_BLEND_ADD
-				);
-			bgfx::setStencil(0
-				| BGFX_STENCIL_TEST_NOTEQUAL
-				| BGFX_STENCIL_FUNC_REF(1)
-				| BGFX_STENCIL_FUNC_RMASK(0xFF)
-				| BGFX_STENCIL_OP_FAIL_S_KEEP
-				| BGFX_STENCIL_OP_FAIL_Z_KEEP
-				| BGFX_STENCIL_OP_PASS_Z_KEEP
-				);
-			screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft, 1.0f);
-			bgfx::submit(RENDER_PASS_LIGHT_ID);
+			for (uint32_t ii = 1; ii < 8; ++ii)
+			{
+				bx::vec3MulMtxH(xyz, box[ii], vp);
+				minx = bx::fmin(minx, xyz[0]);
+				miny = bx::fmin(miny, xyz[1]);
+				maxx = bx::fmax(maxx, xyz[0]);
+				maxy = bx::fmax(maxy, xyz[1]);
+				maxz = bx::fmax(maxz, xyz[2]);
+			}
+
+			// Cull light if it's fully behind camera.
+			if (maxz >= 0.0f)
+			{
+				float x0 = bx::fclamp( (minx * 0.5f + 0.5f) * width,  0.0f, (float)width);
+				float y0 = bx::fclamp( (miny * 0.5f + 0.5f) * height, 0.0f, (float)height);
+				float x1 = bx::fclamp( (maxx * 0.5f + 0.5f) * width,  0.0f, (float)width);
+				float y1 = bx::fclamp( (maxy * 0.5f + 0.5f) * height, 0.0f, (float)height);
+
+				if (showScissorRects)
+				{
+					bgfx::TransientVertexBuffer tvb;
+					bgfx::TransientIndexBuffer tib;
+					if (bgfx::allocTransientBuffers(&tvb, DebugVertex::ms_decl, 4, &tib, 8) )
+					{
+						uint32_t abgr = 0x8000ff00;
+
+						DebugVertex* vertex = (DebugVertex*)tvb.data;
+						vertex->m_x = x0;
+						vertex->m_y = y0;
+						vertex->m_z = 0.0f;
+						vertex->m_abgr = abgr;
+						++vertex;
+
+						vertex->m_x = x1;
+						vertex->m_y = y0;
+						vertex->m_z = 0.0f;
+						vertex->m_abgr = abgr;
+						++vertex;
+
+						vertex->m_x = x1;
+						vertex->m_y = y1;
+						vertex->m_z = 0.0f;
+						vertex->m_abgr = abgr;
+						++vertex;
+
+						vertex->m_x = x0;
+						vertex->m_y = y1;
+						vertex->m_z = 0.0f;
+						vertex->m_abgr = abgr;
+
+						uint16_t* indices = (uint16_t*)tib.data;
+						*indices++ = 0;
+						*indices++ = 1;
+						*indices++ = 1;
+						*indices++ = 2;
+						*indices++ = 2;
+						*indices++ = 3;
+						*indices++ = 3;
+						*indices++ = 0;
+
+						bgfx::setProgram(lineProgram);
+						bgfx::setVertexBuffer(&tvb);
+						bgfx::setIndexBuffer(&tib);
+						bgfx::setState(0
+							| BGFX_STATE_RGB_WRITE
+							| BGFX_STATE_PT_LINES
+							| BGFX_STATE_BLEND_ALPHA
+							);
+						bgfx::submit(RENDER_PASS_DEBUG_LIGHTS_ID);
+					}
+				}
+
+				uint8_t val = light&7;
+				float lightRgbInnerR[4] =
+				{
+					val & 0x1 ? 1.0f : 0.25f,
+					val & 0x2 ? 1.0f : 0.25f,
+					val & 0x4 ? 1.0f : 0.25f,
+					0.8f,
+				};
+
+				// Draw light.
+				bgfx::setUniform(u_lightPosRadius, &lightPosRadius);
+				bgfx::setUniform(u_lightRgbInnerR, lightRgbInnerR);
+				bgfx::setUniform(u_mtx, invMvp);
+				const uint16_t scissorHeight = uint16_t(y1-y0);
+				bgfx::setScissor(uint16_t(x0), height-scissorHeight-uint16_t(y0), uint16_t(x1-x0), scissorHeight);
+				bgfx::setTexture(0, s_normal, gbuffer, 1);
+				bgfx::setTexture(1, s_depth,  gbuffer, 2);
+				bgfx::setProgram(lightProgram);
+				bgfx::setState(0
+					| BGFX_STATE_RGB_WRITE
+					| BGFX_STATE_ALPHA_WRITE
+					| BGFX_STATE_BLEND_ADD
+					);
+				screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft);
+				bgfx::submit(RENDER_PASS_LIGHT_ID);
+			}
 		}
 	}
 
+	if(1)
+	{
+		//bgfx::setMarker("dir light");
+		float lightDirection[4] = { -1, -1, -1, 0 };//float lightDirection[4] = { 0, -1, 0, 0 };//Vector4_Normalized(Vector4_Set( -1, -1, -1, 0 ));
+		float viewSpaceLightDirection[4] = { 0 };
+		bx::vec3MulMtx(viewSpaceLightDirection, lightDirection, view);
+
+		float lightVectorWS[4] = { 0, 1, 0, 0 };
+		float lightVector[4] = { 0, 1, 0, 0 };
+		bx::vec3MulMtx(lightVector, lightVectorWS, view);
+		//bx::vec3Neg(lightVector, lightDirection);
+		//bx::vec3Norm(lightVector, lightVector);
+
+		//float lightColor[4] = { 0, 1, 0, 1 };
+		float lightColor[4] = { 0.4f, 0.6f, 0.5f, 1 };
+
+		bgfx::setTransform(invView);
+		bgfx::setUniform(u_lightVector, lightVector);
+		bgfx::setUniform(u_lightColor, &lightColor);
+		bgfx::setUniform(u_inverseViewMat, invView);
+		bgfx::setTexture(0, s_normal, gbuffer, RT_NORMALS);
+		bgfx::setTexture(1, s_depth,  gbuffer, RT_DEPTH);
+		bgfx::setProgram(deferred_directional_light_program);
+		bgfx::setState(0
+			| BGFX_STATE_RGB_WRITE
+			| BGFX_STATE_ALPHA_WRITE
+			| BGFX_STATE_BLEND_ADD
+			);
+		//bgfx::setStencil(0
+		//	| BGFX_STENCIL_TEST_NOTEQUAL
+		//	| BGFX_STENCIL_FUNC_REF(1)
+		//	| BGFX_STENCIL_FUNC_RMASK(0xFF)
+		//	| BGFX_STENCIL_OP_FAIL_S_KEEP
+		//	| BGFX_STENCIL_OP_FAIL_Z_KEEP
+		//	| BGFX_STENCIL_OP_PASS_Z_KEEP
+		//	);
+		screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft, 1.0f);
+		bgfx::submit(RENDER_PASS_GLOBAL_LIGHT);
+	}
+
 	// Combine color and light buffers.
-	bgfx::setTexture(0, s_albedo, gbuffer,     0);
+	bgfx::setTexture(0, s_albedo, gbuffer,     RT_ALBEDO);
 	bgfx::setTexture(1, s_light,  lightBuffer, 0);
 	bgfx::setProgram(combineProgram);
 	bgfx::setState(0
@@ -632,6 +667,76 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 			bgfx::submit(RENDER_PASS_DEBUG_GBUFFER_ID);
 		}
 	}
+
+#else
+
+		float lightDirection[4] = { 0, -1, 0, 0 };//Vector4_Normalized(Vector4_Set( -1, -1, -1, 0 ));
+		float viewSpaceLightDirection[4] = { 0 };
+		bx::vec3MulMtx(viewSpaceLightDirection, lightDirection, view);
+
+
+	{
+		bgfx::setViewRect(RENDER_PASS_FORWARD, 0, 0, width, height);
+		bgfx::setViewClear(RENDER_PASS_FORWARD, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH|BGFX_CLEAR_STENCIL, 0, 1.0f, 0);
+		bgfx::FrameBufferHandle defaultFrameBuffer = BGFX_INVALID_HANDLE;
+		bgfx::setViewFrameBuffer(RENDER_PASS_FORWARD, defaultFrameBuffer);
+
+		float proj[16];
+		mtxProj(proj, 60.0f, float(width)/float(height), 0.5f, 1000.0f);
+
+		bgfx::setViewTransform(RENDER_PASS_FORWARD, view, proj);
+
+
+		const uint32_t dim = 11;
+		const float offset = (float(dim-1) * 3.0f) * 0.5f;
+
+		for (uint32_t yy = 0; yy < dim; ++yy)
+		{
+			for (uint32_t xx = 0; xx < dim; ++xx)
+			{
+				float mtx[16];
+				if (animateMesh)
+				{
+					bx::mtxRotateXY(mtx, time*1.023f + xx*0.21f, time*0.03f + yy*0.37f);
+				}
+				else
+				{
+					bx::mtxIdentity(mtx);
+				}
+				mtx[12] = -offset + float(xx)*3.0f;
+				mtx[13] = -offset + float(yy)*3.0f;
+				mtx[14] = 0.0f;
+
+				// Set transform for draw call.
+				bgfx::setTransform(mtx);
+
+				// Set vertex and fragment shaders.
+				bgfx::setUniform(u_inverseViewMat, invView);
+				bgfx::setUniform(u_lightVector, viewSpaceLightDirection);
+				bgfx::setProgram(forwardProgram);
+
+				// Set vertex and index buffer.
+				bgfx::setVertexBuffer(vbh);
+				bgfx::setIndexBuffer(ibh);
+
+				// Bind textures.
+				bgfx::setTexture(0, s_texColor,  textureColor);
+				bgfx::setTexture(1, s_texNormal, textureNormal);
+
+				// Set render states.
+				bgfx::setState(0
+					| BGFX_STATE_RGB_WRITE
+					| BGFX_STATE_ALPHA_WRITE
+					| BGFX_STATE_DEPTH_WRITE
+					| BGFX_STATE_DEPTH_TEST_LESS
+					| BGFX_STATE_MSAA
+					);
+				bgfx::submit(RENDER_PASS_FORWARD);
+			}
+		}
+	}
+#endif
+
 	return ALL_OK;
 }
 
@@ -645,8 +750,8 @@ ERet Renderer::EndFrame()
 }
 
 
-bool animateMesh = true;
+bool animateMesh = false;
 bool showScissorRects = false;
 bool showGBuffer = true;
 int32_t numLights = 512;
-float lightAnimationSpeed = 0.3f;
+float lightAnimationSpeed = 0.0f;

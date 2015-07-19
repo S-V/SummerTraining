@@ -1,3 +1,4 @@
+//based on
 /*
  * Copyright 2011-2015 Branimir Karadzic. All rights reserved.
  * License: http://www.opensource.org/licenses/BSD-2-Clause
@@ -10,7 +11,7 @@
 static bgfx::DynamicVertexBufferHandle g_dynamicVB = BGFX_INVALID_HANDLE;
 static bgfx::DynamicIndexBufferHandle g_dynamicIB = BGFX_INVALID_HANDLE;
 
-static CSG_VERTEX g_planeVertices[4] =
+static BSP::Vertex g_planeVertices[4] =
 {
 	//          XYZ              |            N              | T |    U    |  V
 	{ { -100.0f, 0.0f, -100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,       0, 0x7fff },
@@ -33,12 +34,12 @@ ERet MyEntryPoint()
 	mxDO(renderer.Initialize());
 
 
-	CSG_VERTEX::init();
+	BSP::Vertex::init();
 
-	calcTangents( g_planeVertices, BX_COUNTOF(g_planeVertices), CSG_VERTEX::ms_decl,
+	calcTangents( g_planeVertices, BX_COUNTOF(g_planeVertices), BSP::Vertex::ms_decl,
 		g_planeIndices, BX_COUNTOF(g_planeIndices) );
 
-	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, CSG_VERTEX::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
+	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
 
 	const bgfx::Memory* vertexMemory = bgfx::makeRef( g_planeVertices, sizeof(g_planeVertices) );
@@ -55,12 +56,10 @@ ERet MyEntryPoint()
 
 	int32_t scrollArea = 0;
 
-	float view[16];
 	float initialPos[3] = { 0.0f, 10.0f, -15.0f };
 	cameraCreate();
 	cameraSetPosition(initialPos);
 	cameraSetVerticalAngle(0.0f);
-	cameraGetViewMtx(view);
 
 	uint32_t width = 0;
 	uint32_t height = 0;
@@ -79,11 +78,8 @@ ERet MyEntryPoint()
 
 		float time = (float)( (now-timeOffset)/freq);
 
-		// Use debug font to print information about this example.
 		bgfx::dbgTextClear();
-		bgfx::dbgTextPrintf(0, 1, 0x4f, "bgfx/examples/21-deferred");
-		bgfx::dbgTextPrintf(0, 2, 0x6f, "Description: MRT rendering and deferred shading.");
-		bgfx::dbgTextPrintf(0, 3, 0x0f, "Frame: % 7.3f[ms]", double(frameTime)*toMs);
+		bgfx::dbgTextPrintf(0, 0, 0x0f, "Frame: % 7.3f[ms]", double(frameTime)*toMs);
 
 		imguiBeginFrame(mouseState.m_mx
 			, mouseState.m_my
@@ -121,28 +117,25 @@ ERet MyEntryPoint()
 
 		// Update camera.
 		cameraUpdate(deltaTime, mouseState);
+
+		float view[16];
 		cameraGetViewMtx(view);
 
 		renderer.BeginFrame( width, height, reset, view, time );
 
+		if(1)
 		{
-			// Set transform for draw call.
-			float mtx[16];
-			bx::mtxIdentity(mtx);
-			bgfx::setTransform(mtx);
-
-			// Set vertex and fragment shaders.
+			float invView[16];
+			bx::mtxInverse(invView, view);
+			bgfx::setUniform(renderer.u_inverseViewMat, invView);
 			bgfx::setProgram(renderer.geomProgram);
 
-			// Set vertex and index buffer.
 			bgfx::setVertexBuffer(g_dynamicVB);
 			bgfx::setIndexBuffer(g_dynamicIB);
 
-			// Bind textures.
 			bgfx::setTexture(0, renderer.s_texColor,  renderer.textureColor);
 			bgfx::setTexture(1, renderer.s_texNormal, renderer.textureNormal);
 
-			// Set render states.
 			bgfx::setState(0
 				| BGFX_STATE_RGB_WRITE
 				| BGFX_STATE_ALPHA_WRITE
@@ -151,11 +144,15 @@ ERet MyEntryPoint()
 				| BGFX_STATE_MSAA
 				);
 
-			// Submit primitive for rendering to view 0.
 			bgfx::submit(RENDER_PASS_GEOMETRY_ID);
 		}
 
 		renderer.EndFrame();
+
+		if( !!mouseState.m_buttons[entry::MouseButton::Left] )
+		{
+			DBGOUT("LMB down!");
+		}
 	}
 
 	// Cleanup.

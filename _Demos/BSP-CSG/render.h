@@ -1,3 +1,4 @@
+//based on
 /*
  * Copyright 2011-2015 Branimir Karadzic. All rights reserved.
  * License: http://www.opensource.org/licenses/BSD-2-Clause
@@ -13,9 +14,11 @@
 
 #define RENDER_PASS_GEOMETRY_ID       0
 #define RENDER_PASS_LIGHT_ID          1
-#define RENDER_PASS_COMBINE_ID        2
-#define RENDER_PASS_DEBUG_LIGHTS_ID   3
-#define RENDER_PASS_DEBUG_GBUFFER_ID  4
+#define RENDER_PASS_GLOBAL_LIGHT      2
+#define RENDER_PASS_COMBINE_ID        3
+#define RENDER_PASS_DEBUG_LIGHTS_ID   4
+#define RENDER_PASS_DEBUG_GBUFFER_ID  5
+#define RENDER_PASS_FORWARD           7
 
 extern float g_texelHalf;
 extern bool g_originBottomLeft;
@@ -121,19 +124,34 @@ public:
 	bgfx::UniformHandle u_mtx;
 	bgfx::UniformHandle u_lightPosRadius;
 	bgfx::UniformHandle u_lightRgbInnerR;
-	bgfx::UniformHandle u_lightDirection;
+
+	bgfx::UniformHandle u_lightVector;
 	bgfx::UniformHandle u_lightColor;
+	bgfx::UniformHandle u_inverseViewMat;
+
 
 	bgfx::ProgramHandle geomProgram;
 	bgfx::ProgramHandle lightProgram;
 	bgfx::ProgramHandle combineProgram;
 	bgfx::ProgramHandle debugProgram;
 	bgfx::ProgramHandle lineProgram;
+	bgfx::ProgramHandle forwardProgram;
 
 	bgfx::ProgramHandle deferred_directional_light_program;
 
 	bgfx::TextureHandle textureColor;
 	bgfx::TextureHandle textureNormal;
+
+	// G-buffer:
+	// RT0 - hardware depth
+	// RT1 - view-space normals
+	// RT2 - diffuse color (albedo)
+	enum {
+		RT_DEPTH = 0,
+		RT_ALBEDO = 1,
+		RT_NORMALS = 2,
+		//RT_EMISSIVE = 3,//RT_SPECULAR = 3,
+	};
 
 	bgfx::TextureHandle gbufferTex[3];
 	bgfx::FrameBufferHandle gbuffer;

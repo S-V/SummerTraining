@@ -327,7 +327,7 @@ dofile (path.join(BGFX_DIR, "scripts/example-common.lua"))
 
 group "libs"
 -- bgfx library
-bgfxProject("", "StaticLib", {"BGFX_CONFIG_RENDERER_DIRECT3D11=1"})
+bgfxProject("", "StaticLib", {"BGFX_CONFIG_RENDERER_DIRECT3D11=1","BGFX_CONFIG_DEBUG=1"})
 -- bgfx example projects
 --[[
 group "examples"

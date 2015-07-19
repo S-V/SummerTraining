@@ -1,12 +1,6 @@
 $input a_position, a_normal, a_tangent, a_texcoord0
 $output v_wpos, v_wnormal, v_view, v_normal, v_tangent, v_bitangent, v_texcoord0
 
-//based on
-/*
- * Copyright 2011-2015 Branimir Karadzic. All rights reserved.
- * License: http://www.opensource.org/licenses/BSD-2-Clause
- */
-
 #include "common.sh"
 
 void main()
