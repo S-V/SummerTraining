@@ -31,6 +31,19 @@ public:
 mxDECLARE_STRUCT(Vertex);
 mxDECLARE_POD_TYPE(Vertex);
 
+struct RayCastResult
+{
+	Float3	position;
+	Float3	normal;
+	bool hitAnything;
+public:
+	RayCastResult()
+	{
+		hitAnything = false;
+	}
+	PREVENT_COPY(RayCastResult);
+};
+
 //
 //	EPlaneSide - spatial relation to a plane.
 //
@@ -91,7 +104,7 @@ struct Poly : public CStruct
 {
 	TArray< Vertex >	vertices;
 	BspPolyID			next;
-	Vertex				buffer[8];	//«128 small embedded storage to avoid memory allocations
+	Vertex				buffer[8];	//«256 small embedded storage to avoid memory allocations
 public:
 	mxDECLARE_CLASS(Poly,CStruct);
 	mxDECLARE_REFLECTION;
@@ -139,9 +152,9 @@ public:
 */
 struct Tree : public CStruct
 {
-	TArray< Node >	m_nodes;	// tree nodes (0 = root index)
+	TArray< Node >		m_nodes;	// tree nodes (0 = root index)
 	TArray< Vector4 >	m_planes;	// plane equations (16 bytes per plane)
-	TArray< Poly >	m_polys;
+	TArray< Poly >		m_polys;
 	//TArray< NodeData >	m_nodeData;
 public:
 	mxDECLARE_CLASS(Tree,CStruct);
@@ -159,6 +172,13 @@ public:
 
 	// returns > 0, if outside
 	float DistanceToPoint( const Float3& point, float epsilon ) const;
+
+
+	void CastRay(
+		const Float3& start, const Float3& direction,
+		RayCastResult &result
+	) const;
+
 
 	float CastRay( const Float3& start, const Float3& direction ) const;
 

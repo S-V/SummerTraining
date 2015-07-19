@@ -19,6 +19,7 @@
 #define RENDER_PASS_DEBUG_LIGHTS_ID   4
 #define RENDER_PASS_DEBUG_GBUFFER_ID  5
 #define RENDER_PASS_FORWARD           7
+#define RENDER_PASS_DEBUG_LINES_3D    12
 
 extern float g_texelHalf;
 extern bool g_originBottomLeft;

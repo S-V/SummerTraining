@@ -4,6 +4,7 @@
 #include <Core/VectorMath.h>
 #include <Core/Util/Tweakable.h>
 #include <Graphics/Utils.h>
+#if 0
 
 void AuxVertex::BuildVertexDescription( VertexDescription & _description )
 {
@@ -94,27 +95,11 @@ void AuxRenderer::DrawAABB(
 	}
 }
 
-BatchRenderer::BatchRenderer()
+ERet MyRenderer::Initialize()
 {
-	m_VBSize = 0;
-	m_IBSize = 0;
-	m_indexStride = 0;
+	UINT32 vertexBufferSize = 4096 * sizeof(AuxVertex);
+	UINT32 indexBufferSize = 8192 * sizeof(UINT16);
 
-	m_dynamicVB.SetNil();
-	m_dynamicIB.SetNil();
-	m_layout.SetNil();
-
-	m_topology = Topology::Undefined;
-
-	//m_transform = Matrix_Identity();
-}
-
-BatchRenderer::~BatchRenderer()
-{
-}
-
-ERet BatchRenderer::Initialize( UINT32 vertexBufferSize, UINT32 indexBufferSize )
-{
 	VertexDescription	vertexDescription;
 	AuxVertex::BuildVertexDescription( vertexDescription );
 	m_layout = llgl::CreateInputLayout( vertexDescription, "AuxVertex" );
@@ -126,8 +111,6 @@ ERet BatchRenderer::Initialize( UINT32 vertexBufferSize, UINT32 indexBufferSize 
 	m_vertexStride = sizeof(AuxVertex);
 	m_indexStride = sizeof(UINT16);
 
-	m_topology = Topology::Undefined;
-
 	//m_transform = Matrix_Identity();
 
 	//SetShader(NULL);
@@ -136,11 +119,8 @@ ERet BatchRenderer::Initialize( UINT32 vertexBufferSize, UINT32 indexBufferSize 
 
 	return ALL_OK;
 }
-
-void BatchRenderer::Shutdown()
+void MyRenderer::Shutdown()
 {
-	m_technique = NULL;
-
 	llgl::DeleteBuffer( m_dynamicVB );
 	m_dynamicVB.SetNil();
 
@@ -150,10 +130,72 @@ void BatchRenderer::Shutdown()
 	llgl::DeleteInputLayout(m_layout);
 	m_layout.SetNil();
 
+	m_VBSize = 0;
+	m_IBSize = 0;
+	m_indexStride = 0;
+
+	m_dynamicVB.SetNil();
+	m_dynamicIB.SetNil();
+	m_layout.SetNil();
+	//m_transform = Matrix_Identity();
+}
+void MyRenderer::Draw(
+					  const AuxVertex* _vertices,
+					  const UINT32 _numVertices,
+					  const UINT16* _indices,
+					  const UINT32 _numIndices,
+					  const Topology::Enum topology,
+					  const FxShader& shader
+					  )
+{
+	const HContext mainContext = llgl::GetMainContext();
+
+	llgl::DrawCall	batch;
+	batch.Clear();
+
+	FxApplyShaderState(batch, shader);
+
+	llgl::UpdateBuffer( mainContext, m_dynamicVB, _numVertices*sizeof(AuxVertex), _vertices );
+
+	if( _numIndices > 0 ) {
+		llgl::UpdateBuffer( mainContext, m_dynamicIB, _numIndices*sizeof(UINT16), _indices );
+	}
+
+	batch.inputLayout = m_layout;
+	batch.topology = topology;
+
+	batch.VB[0] = m_dynamicVB;
+	batch.IB = m_dynamicIB;
+	batch.b32bit = (m_indexStride==sizeof(UINT32));
+
+	batch.baseVertex = 0;
+	batch.vertexCount = _numVertices;
+	batch.startIndex = 0;
+	batch.indexCount = _numIndices;
+
+	llgl::Submit(mainContext, batch);
+}
+
+BatchRenderer::BatchRenderer()
+{
+}
+
+BatchRenderer::~BatchRenderer()
+{
+}
+
+ERet BatchRenderer::Initialize(  PlatformRenderer* renderer  )
+{
+	m_renderer = renderer;
+	return ALL_OK;
+}
+
+void BatchRenderer::Shutdown()
+{
 	m_batchedVertices.Empty();
 	m_batchedIndices.Empty();
-
 	m_topology = Topology::Undefined;
+	m_technique = NULL;
 }
 
 //void BatchRenderer::SetShader( FxShader* technique )
@@ -936,41 +978,41 @@ void BatchRenderer::DrawPoint( const AuxVertex& _p )
 
 void BatchRenderer::Flush()
 {
-	const HContext mainContext = llgl::GetMainContext();
-
 	const UINT32 vertexDataSize = m_batchedVertices.Num();
 	const UINT32 indexDataSize = m_batchedIndices.Num();
-	const UINT32 numVertices = vertexDataSize / m_vertexStride;
-	const UINT32 numIndices = indexDataSize / m_indexStride;
+	const UINT32 numVertices = vertexDataSize / sizeof(AuxVertex);
+	const UINT32 numIndices = indexDataSize / sizeof(UINT16);
 
 	if( numVertices )
 	{
-		mxASSERT_PTR(m_technique);
+		m_renderer->Draw( (AuxVertex*)m_batchedVertices.ToPtr(), numVertices, (UINT16*)m_batchedIndices.ToPtr(), numIndices, m_topology, *m_technique );
 
-		llgl::DrawCall	batch;
-		batch.Clear();
+		//mxASSERT_PTR(m_technique);
 
-		FxApplyShaderState(batch, *m_technique);
+		//llgl::DrawCall	batch;
+		//batch.Clear();
 
-		llgl::UpdateBuffer( mainContext, m_dynamicVB, m_batchedVertices.Num(), m_batchedVertices.ToPtr() );
+		//FxApplyShaderState(batch, *m_technique);
 
-		if( numIndices > 0 ) {
-			llgl::UpdateBuffer( mainContext, m_dynamicIB, m_batchedIndices.Num(), m_batchedIndices.ToPtr() );
-		}
+		//llgl::UpdateBuffer( mainContext, m_dynamicVB, m_batchedVertices.Num(), m_batchedVertices.ToPtr() );
 
-		batch.inputLayout = m_layout;
-		batch.topology = m_topology;
+		//if( numIndices > 0 ) {
+		//	llgl::UpdateBuffer( mainContext, m_dynamicIB, m_batchedIndices.Num(), m_batchedIndices.ToPtr() );
+		//}
 
-		batch.VB[0] = m_dynamicVB;
-		batch.IB = m_dynamicIB;
-		batch.b32bit = (m_indexStride==sizeof(UINT32));
+		//batch.inputLayout = m_layout;
+		//batch.topology = m_topology;
 
-		batch.baseVertex = 0;
-		batch.vertexCount = numVertices;
-		batch.startIndex = 0;
-		batch.indexCount = numIndices;
+		//batch.VB[0] = m_dynamicVB;
+		//batch.IB = m_dynamicIB;
+		//batch.b32bit = (m_indexStride==sizeof(UINT32));
 
-		llgl::Submit(mainContext, batch);
+		//batch.baseVertex = 0;
+		//batch.vertexCount = numVertices;
+		//batch.startIndex = 0;
+		//batch.indexCount = numIndices;
+
+		//llgl::Submit(mainContext, batch);
 	}
 
 	m_batchedVertices.Empty();
@@ -983,432 +1025,15 @@ void BatchRenderer::Draw(
 					  const Topology::Enum topology
 					  )
 {
-	mxASSERT_PTR(m_technique);
-	const UINT32 vertexDataSize = numVertices * sizeof(vertices[0]);
-	const UINT32 indexDataSize = numIndices * sizeof(indices[0]);
-	mxASSERT(vertexDataSize <= m_VBSize);
-	mxASSERT(indexDataSize <= m_IBSize);
-
+	//mxASSERT_PTR(m_technique);
+	//const UINT32 vertexDataSize = numVertices * sizeof(vertices[0]);
+	//const UINT32 indexDataSize = numIndices * sizeof(indices[0]);
+	//mxASSERT(vertexDataSize <= m_VBSize);
+	//mxASSERT(indexDataSize <= m_IBSize);
 	Flush();
 
-	const HContext mainContext = llgl::GetMainContext();
-
-	llgl::UpdateBuffer( mainContext, m_dynamicVB, numVertices*sizeof(vertices[0]), vertices );
-
-	if( indices && numIndices ) {
-		llgl::UpdateBuffer( mainContext, m_dynamicIB, numIndices*sizeof(indices[0]), indices );
-	}
-
-	llgl::DrawCall	batch;
-	batch.Clear();
-
-	FxApplyShaderState(batch, *m_technique);
-
-	batch.inputLayout = m_layout;
-	batch.topology = topology;
-
-	batch.VB[0] = m_dynamicVB;
-	batch.IB = m_dynamicIB;
-	batch.b32bit = (sizeof(indices[0])==sizeof(UINT32));
-
-	batch.baseVertex = 0;
-	batch.vertexCount = numVertices;
-	batch.startIndex = 0;
-	batch.indexCount = numIndices;
-
-	llgl::Submit(mainContext, batch);
+	m_renderer->Draw( vertices, numVertices, indices, numIndices, topology, *m_technique );
 }
-
-namespace Fonts
-{
-	static const UINT32 SPRITE_FONT_MAGIC = 'TNOF';    // 'FONT'
-
-	// Comparison operators make our sorted glyph vector work with std::binary_search and lower_bound.
-	static inline bool operator < ( const Glyph& left, const Glyph& right)
-	{
-		return left.Character < right.Character;
-	}
-	static inline bool operator < ( wchar_t left, const Glyph& right )
-	{
-		return left < right.Character;
-	}
-	static inline bool operator < ( const Glyph& left, wchar_t right )
-	{
-		return left.Character < right;
-	}
-
-	static PixelFormat::Enum GetEngineFormat( UINT32 nativeFormat )
-	{
-		enum {
-			__DXGI_FORMAT_R8G8B8A8_UNORM = 28,
-			__DXGI_FORMAT_B4G4R4A4_UNORM = 115,
-			__DXGI_FORMAT_B8G8R8A8_UNORM = 87,
-			__DXGI_FORMAT_BC2_UNORM = 74
-		};
-
-		if( nativeFormat == __DXGI_FORMAT_R8G8B8A8_UNORM ) {
-			return PixelFormat::RGBA8;
-		}
-		if( nativeFormat == __DXGI_FORMAT_B8G8R8A8_UNORM ) {
-			return PixelFormat::BGRA8;
-		}
-		if( nativeFormat == __DXGI_FORMAT_BC2_UNORM ) {
-			return PixelFormat::BC2;
-		}
-
-		return PixelFormat::Unknown;
-	}
-
-	SpriteFont::SpriteFont()
-	{
-		m_default = NULL;
-		m_lineSpacing = 0.0f;
-		m_textureAtlas.SetNil();
-	}
-	SpriteFont::~SpriteFont()
-	{
-	}
-	ERet SpriteFont::Load( AStreamReader& stream )
-	{
-		FileHeader	header;
-		stream.Get( header );
-
-		// Validate the header.
-		if( header.magic != SPRITE_FONT_MAGIC ) {
-			ptERROR("Invalid font library!\n");
-			return ERR_INVALID_PARAMETER;
-		}
-
-		// Read the (sorted) glyph data.
-		m_glyphs.SetNum( header.numGlyphs );
-		stream.Read( m_glyphs.ToPtr(), m_glyphs.GetDataSize() );
-		//mxASSERT(std::is_sorted( m_glyphs.ToPtr(), m_glyphs.ToPtr() + m_glyphs.Num() ), "Glyphs must be in ascending codepoint order");
-
-		// Read font properties.
-		m_lineSpacing = header.lineSpacing;
-		
-		SetDefaultCharacter( (UNICODECHAR)header.defaultChar );
-
-		// Read the texture data.
-		BitmapHeader	bitmap;
-		stream.Get( bitmap );
-
-		const UINT32 imageSize = bitmap.pitch * bitmap.rows;
-
-		ScopedStackAlloc    tempAlloc( gCore.frameAlloc );
-		void* imageData = tempAlloc.AllocA( imageSize );
-		stream.Read( imageData, imageSize );
-
-		const PixelFormat::Enum textureFormat = GetEngineFormat(bitmap.format);
-		chkRET_X_IF_NOT(textureFormat != PixelFormat::Unknown, ERR_INVALID_PARAMETER);
-
-		Texture2DDescription	texDesc;
-		texDesc.format = textureFormat;
-		texDesc.width = bitmap.width;
-		texDesc.height = bitmap.height;
-		texDesc.numMips = 1;
-		texDesc.name.SetReference("SpriteFont");
-
-		m_textureAtlas = llgl::CreateTexture2D(texDesc, imageData);
-		m_resourceHandle = llgl::AsResource( m_textureAtlas );
-
-		m_invTextureWidth = 1.0f / bitmap.width;
-		m_invTextureHeight = 1.0f / bitmap.height;
-
-		return ALL_OK;
-	}
-
-	void SpriteFont::Shutdown()
-	{
-		m_resourceHandle.SetNil();
-
-		if( m_textureAtlas.IsValid() ) {
-			llgl::DeleteTexture( m_textureAtlas );
-			m_textureAtlas.SetNil();
-		}
-	}
-
-	const Glyph* SpriteFont::FindGlyph( UNICODECHAR character ) const
-	{
-		const Glyph* glyph = std::lower_bound( m_glyphs.ToPtr(), m_glyphs.ToPtr() + m_glyphs.Num(), character );
-		if( glyph != NULL && glyph->Character == character ) {
-			return glyph;
-		}
-		return m_default;
-	}
-
-	bool SpriteFont::ContainsCharacter( UNICODECHAR character ) const
-	{
-		return std::binary_search( m_glyphs.ToPtr(), m_glyphs.ToPtr() + m_glyphs.Num(), character );
-	}
-
-	void SpriteFont::SetDefaultCharacter( UNICODECHAR character )
-	{
-		m_default = FindGlyph( character );
-		if( !m_default ) {
-			ptWARN("Couldn't find default glyph!\n");
-			m_default = m_glyphs.GetItemPtr( 0 );
-		}
-	}
-
-	float SpriteFont::GetLineSpacing() const
-	{
-		return m_lineSpacing;
-	}
-
-	// The core glyph layout algorithm, shared between DrawString and MeasureString.
-	template< typename WHAT >    // where WHAT has operator () ( const Glyph& glyph, float x, float y, UINT32 index, void* userData )
-	void SpriteFont::TForEachGlyph( _In_z_ wchar_t const* text, WHAT action, void* userData ) const
-	{
-		float x = 0;
-		float y = 0;
-		UINT32 index = 0;
-
-		for( ; *text; text++ )
-		{
-			wchar_t character = *text;
-
-			switch( character )
-			{
-			case '\r':
-				// Skip carriage returns.
-				continue;
-
-			case '\n':
-				// New line.
-				x = 0;
-				y += m_lineSpacing;
-				break;
-
-			default:
-				{
-					// Output this character.
-					const Glyph& glyph = *FindGlyph( character );
-
-					x += glyph.XOffset;
-
-					if( x < 0 ) {
-						x = 0;
-					}
-
-					if( !iswspace( character ) )
-					{
-						action( glyph, x, y, index++, userData );
-					}
-
-					x += glyph.Subrect.right - glyph.Subrect.left + glyph.XAdvance;
-				}
-				break;
-			}
-		}
-	}
-
-	void SpriteFont::ForEachGlyph( _In_z_ wchar_t const* text, GlyphCallback* callback, void* userData ) const
-	{
-		struct CallbackWrapper
-		{
-			GlyphCallback *    m_callback;
-			CallbackWrapper( GlyphCallback* _callback )
-				: m_callback( _callback )
-			{}
-			void operator () ( const Glyph& glyph, float x, float y, UINT32 index, void* userData )
-			{
-				(*m_callback)( glyph, x, y, index, userData );
-			}
-		};
-		TForEachGlyph( text, CallbackWrapper(callback), userData );
-	}
-
-	void SpriteFont::MeasureString( _In_z_ wchar_t const* text, float *width, float *height )
-	{
-		*width = 0;
-		*height = 0;
-
-		struct MeasureString
-		{
-			const float lineSpacing;
-			float        maxWidth;
-			float        maxHeight;
-		public:
-			MeasureString( float _lineSpacing )
-				: lineSpacing( _lineSpacing ), maxWidth( 0.0f ), maxHeight( 0.0f )
-			{}
-			void operator () ( const Glyph& glyph, float x, float y, UINT32 index, void* userData )
-			{
-				float w = (float)(glyph.Subrect.right - glyph.Subrect.left);
-				float h = (float)(glyph.Subrect.bottom - glyph.Subrect.top) + glyph.YOffset;
-
-				h = std::max(h, lineSpacing);
-
-				maxWidth = std::max(maxWidth, x + w);
-				maxHeight = std::max(maxHeight, y + h);
-			}
-		};
-		MeasureString    measureString( m_lineSpacing );
-		TForEachGlyph( text, measureString, NULL );
-
-		*width = measureString.maxWidth;
-		*height = measureString.maxHeight;
-	}
-
-	// each single character corresponds to exactly one vertex:
-	// we do point sprite => quad expansion in geometry shader.
-	struct TextVertex
-	{
-		Float4	xy_wh;
-		Float4	tl_br;	// UV texture coords for top left and bottom right corners
-	};
-	enum { MAX_TEXT_VERTS = 512 };
-	static const UINT32 TEXT_VERTEX_BUFFER_SIZE = MAX_TEXT_VERTS * sizeof(TextVertex);
-
-	FontRenderer::FontRenderer()
-	{
-
-	}
-
-	ERet FontRenderer::Initialize()
-	{
-		VertexDescription	vertexDesc;
-		{
-			vertexDesc.Begin();
-			vertexDesc.Add(AttributeType::Float, 4, VertexAttribute::TexCoord0, false);
-			vertexDesc.Add(AttributeType::Float, 4, VertexAttribute::TexCoord1, false);
-			vertexDesc.End();
-		}
-		m_vertexLayout = llgl::CreateInputLayout( vertexDesc, "TextVertex" );
-
-		m_vertexBuffer = llgl::CreateBuffer( Buffer_Vertex, TEXT_VERTEX_BUFFER_SIZE );
-
-		return ALL_OK;
-	}
-	void FontRenderer::Shutdown()
-	{
-		llgl::DeleteBuffer(m_vertexBuffer);
-		m_vertexBuffer.SetNil();
-		llgl::DeleteInputLayout(m_vertexLayout);
-		m_vertexLayout.SetNil();
-	}
-
-	// viewport coordinates => normalized device coordinates (NDC)
-	template< typename POINT_SIZE >
-	static inline void ViewportToNDC(
-		float invScreenWidth, float invScreenHeight,
-		POINT_SIZE screenX, POINT_SIZE screenY,
-		float &ndcX, float &ndcY)
-	{
-		ndcX = (screenX * invScreenWidth) * 2.0f - 1.0f;	// [0..ScreenWidth] => [-1..+1]
-		ndcY = (screenY * invScreenHeight) * 2.0f - 1.0f;	// [0..ScreenHeight] => [+1..-1] (flip Y axis)
-		ndcY *= -1.0f;
-	}
-
-	struct ParamData
-	{
-		const SpriteFont *	font;
-		TextVertex *		verts;
-		float				startX;
-		float				startY;
-		float				invScreenWidth;
-		float				invScreenHeight;		
-	};
-	static void AddCharacterVertex( const Glyph& glyph, float x, float y, UINT32 index, void* param )
-	{
-		const ParamData& data = *(const ParamData*) param;
-		const SpriteFont* font = data.font;
-		const float invTextureWidth = font->m_invTextureWidth;
-		const float invTextureHeight = font->m_invTextureHeight;
-
-		x += data.startX;
-		y += data.startY;
-
-		// Calculate the X and Y pixel position on the screen to start drawing to.
-		float glyphLeftX, glyphTopY;
-		ViewportToNDC( data.invScreenWidth, data.invScreenHeight, x, y, glyphLeftX, glyphTopY );
-
-		const UINT32 glyphWidth = glyph.Subrect.right - glyph.Subrect.left;
-		const UINT32 glyphHeight = glyph.Subrect.bottom - glyph.Subrect.top;
-
-		// this controls the size of the character sprite
-		float glyphScalingX, glyphScalingY;
-		glyphScalingX = data.invScreenWidth;
-		glyphScalingY = data.invScreenHeight;
-		glyphScalingX *= 2.0f;
-		glyphScalingY *= 2.0f;
-		glyphLeftX += x * glyphScalingX;
-		glyphTopY -= (y + glyph.YOffset) * glyphScalingY;
-
-		float glyphSizeX = (float)glyphWidth * glyphScalingX;
-		float glyphSizeY = (float)glyphHeight * glyphScalingY;
-
-		TextVertex& vertex = data.verts[ index ];
-
-		vertex.xy_wh = Float4_Set(
-			glyphLeftX,
-			glyphTopY,
-			glyphSizeX,
-			glyphSizeY
-			);
-
-		vertex.tl_br = Float4_Set(
-			glyph.Subrect.left * invTextureWidth,
-			glyph.Subrect.top * invTextureHeight,
-			glyph.Subrect.right * invTextureWidth,
-			glyph.Subrect.bottom * invTextureHeight
-			);
-	}
-
-	// x and y are in viewport coordinates of the text sprite's top left corner
-	ERet FontRenderer::RenderText(
-		HContext _context, llgl::DrawCall& batch,
-		UINT16 screenWidth, UINT16 screenHeight,
-		const SpriteFont* font,
-		UINT16 x, UINT16 y,
-		const char* text, UINT16 length
-		)
-	{
-		if( !length ) {
-			length = strlen(text);
-		}
-		if( !length ) {
-			return ALL_OK;
-		}
-		if( length > MAX_TEXT_VERTS ) {
-			return ERR_BUFFER_TOO_SMALL;
-		}
-
-		ScopedStackAlloc	tempAlloc( gCore.frameAlloc );
-		wchar_t * wideCharData = tempAlloc.AllocMany< wchar_t >( length + 1 );
-		mbstowcs( wideCharData, text, length );
-		wideCharData[ length ] = 0;
-
-		{
-			ParamData	data;
-			data.font = font;
-			data.verts = (TextVertex*) llgl::MapBuffer(_context, m_vertexBuffer, TEXT_VERTEX_BUFFER_SIZE, Map_Write_Discard);
-			data.startX = x;
-			data.startY = y;
-			data.invScreenWidth = 1.0f / screenWidth;
-			data.invScreenHeight = 1.0f / screenHeight;
-
-			font->ForEachGlyph( wideCharData, &AddCharacterVertex, &data );
-
-			llgl::UnmapBuffer(_context, m_vertexBuffer);
-		}
-
-		batch.inputLayout = m_vertexLayout;
-		batch.topology = Topology::PointList;
-
-		batch.VB[0] = m_vertexBuffer;
-
-		batch.baseVertex = 0;
-		batch.vertexCount = length;
-		batch.startIndex = 0;
-		batch.indexCount = 0;
-
-		return ALL_OK;
-	}
-
-}//namespace Fonts
-
 
 /*
 -----------------------------------------------------------------------------
@@ -1527,7 +1152,7 @@ void DrawGizmo( const AxisArrowGeometry& gizmo, const Float4x4& localToWorld, co
 	gizmo.Draw(renderer, S*Matrix_FromAxes(axisZ,axisX,axisY), RGBAf::GREEN);
 	gizmo.Draw(renderer, S*Matrix_FromAxes(axisX,axisY,axisZ), RGBAf::BLUE);
 }
-
+#endif
 //--------------------------------------------------------------//
 //				End Of File.									//
 //--------------------------------------------------------------//

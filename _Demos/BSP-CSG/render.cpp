@@ -375,15 +375,16 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 		bgfx::setViewFrameBuffer(RENDER_PASS_LIGHT_ID, lightBuffer);
 		bgfx::setViewFrameBuffer(RENDER_PASS_GLOBAL_LIGHT, lightBuffer);
 
-		float proj[16];
-		mtxProj(proj, 60.0f, float(width)/float(height), 0.5f, 1000.0f);
+		float persproj[16];
+		mtxProj(persproj, 60.0f, float(width)/float(height), 0.5f, 1000.0f);
 
 		bgfx::setViewFrameBuffer(RENDER_PASS_GEOMETRY_ID, gbuffer);
-		bgfx::setViewTransform(RENDER_PASS_GEOMETRY_ID, view, proj);
+		bgfx::setViewTransform(RENDER_PASS_GEOMETRY_ID, view, persproj);
 
-		bx::mtxMul(vp, view, proj);
+		bx::mtxMul(vp, view, persproj);
 		bx::mtxInverse(invMvp, vp);
 
+		float proj[16];
 		bx::mtxOrtho(proj, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1000.0f);
 		bgfx::setViewTransform(RENDER_PASS_LIGHT_ID,   NULL, proj);
 		bgfx::setViewTransform(RENDER_PASS_GLOBAL_LIGHT, view, proj);
@@ -396,6 +397,11 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 
 		bx::mtxOrtho(proj, 0.0f, (float)width, 0.0f, (float)height, 0.0f, 1000.0f);
 		bgfx::setViewTransform(RENDER_PASS_DEBUG_LIGHTS_ID, NULL, proj);
+
+
+		bgfx::setViewRect(RENDER_PASS_DEBUG_LINES_3D, 0, 0, width, height);
+		bgfx::setViewClear(RENDER_PASS_DEBUG_LINES_3D, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH|BGFX_CLEAR_STENCIL, 0, 1.0f, 0);
+		bgfx::setViewTransform(RENDER_PASS_DEBUG_LINES_3D, view, persproj);
 	}
 
 	const uint32_t dim = 11;

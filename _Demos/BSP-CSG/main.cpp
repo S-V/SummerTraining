@@ -57,9 +57,14 @@ ERet MyEntryPoint()
 					);
 			}
 		} enumerateMeshVertices;
-		
+
 		tree.Build( &enumerateMeshVertices );
 	}
+
+	{
+
+	}
+
 
 	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
@@ -82,6 +87,8 @@ ERet MyEntryPoint()
 	cameraCreate();
 	cameraSetPosition(initialPos);
 	cameraSetVerticalAngle(0.0f);
+
+	BSP::RayCastResult lastHit;
 
 	uint32_t width = 0;
 	uint32_t height = 0;
@@ -167,6 +174,31 @@ ERet MyEntryPoint()
 				);
 
 			bgfx::submit(RENDER_PASS_GEOMETRY_ID);
+		}
+
+		if( lastHit.hitAnything )
+		{
+			float mtx[16];
+			bx::mtxTranslate(mtx,lastHit.position.x,lastHit.position.y,lastHit.position.z);
+			bx::mtxScale(mtx,0.3,0.3,0.3);
+
+
+			bgfx::setTransform(mtx);
+
+			bgfx::setVertexBuffer(renderer.vbh);
+			bgfx::setIndexBuffer(renderer.ibh);
+
+			bgfx::setTexture(0, renderer.s_texColor,  renderer.textureColor);
+			bgfx::setTexture(1, renderer.s_texNormal, renderer.textureNormal);
+
+			bgfx::setState(0
+				| BGFX_STATE_RGB_WRITE
+				| BGFX_STATE_ALPHA_WRITE
+				| BGFX_STATE_DEPTH_WRITE
+				| BGFX_STATE_DEPTH_TEST_LESS
+				| BGFX_STATE_MSAA
+				);
+			bgfx::submit(RENDER_PASS_DEBUG_LINES_3D);
 		}
 
 		renderer.EndFrame();

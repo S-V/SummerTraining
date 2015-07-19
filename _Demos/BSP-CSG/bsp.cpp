@@ -925,6 +925,80 @@ size_t Tree::BytesAllocated() const
 //	return fixedNormal;
 //}
 
+#if 0
+int CastRay_R(
+			 const Float3& start, const Float3& direction,
+			 const Tree& tree, const int nodeIndex,
+			 float tmin, float tmax,
+			 float *thit
+			 ) const
+{
+	if( nodeIndex >= 0 )
+	{
+		const Node& node = tree.m_nodes[ nodeIndex ];
+		const Vector4& plane = tree.m_planes[ node.plane ];
+		const float distance = Plane_PointDistance( plane, start );
+		const int nearIndex = (distance >= 0.f);	// child of Node for half-space containing the origin of Ray: 1 - front, 0 - back
+		const int sides[2] = { (INT16)node.back, (INT16)node.front };
+
+		const float denom = Float3_Dot( Plane_GetNormal(plane), direction );
+		// If denom is zero, ray runs parallel to plane. In this case,
+		// just fall through to visit the near side (the one 'start' lies on)
+		if( denom != 0.0f )
+		{
+			float t = distance / denom;
+			if (0.0f <= t && t <= tmax) {
+				if (t >= tmin) {
+					// Straddling, push far side onto stack, then visit near side
+					nodeStack.push(node->child[1^nearIndex]);
+					timeStack.push(tmax);
+					tmax = t;
+				} else nearIndex = 1^nearIndex;// 0 <= t < tmin, visit far side
+			}
+		}
+		return CastRay_R(start, direction, tree, sides[ nearIndex ], tmin, tmax);
+	}
+	else
+	{
+		// Now at a leaf. If it is solid, there's a hit at time tmin, so exit
+		if( nodeIndex == BSP_SOLID_LEAF ) {
+			*thit = tmin;
+			return 1;
+		}
+	}
+	// No hit
+	return 0;
+}
+
+void Tree::CastRay(
+			 const Float3& start, const Float3& direction,
+			 RayCastResult &result
+			 ) const
+{
+	int nodeIndex = 0;
+	float distance = 0.f;
+	// If < 0, we are in a leaf node
+	while( nodeIndex >= 0 )
+	{
+		// Find which side of the node we are on
+		const Node& node = m_nodes[ nodeIndex ];
+		const Vector4& plane = m_planes[ node.plane ];
+		distance = Plane_PointDistance( plane, point );
+		const int nearIndex = (distance >= 0.f);	// child of Node for half-space containing the origin of Ray: 1 - front, 0 - back
+		const int sides[2] = { (INT16)node.back, (INT16)node.front };
+		// Go down the appropriate side
+		if( distance > +epsilon ) {
+			nodeIndex = (INT16)node.front;
+		} else if( distance < -epsilon ) {
+			nodeIndex = (INT16)node.back;
+		} else {
+			nodeIndex = sides[ nearIndex ];
+		}
+	}
+	// return the minimum (closest) distance
+	return distance;
+}
+#endif
 
 float Tree::CastRay( const Float3& start, const Float3& direction ) const
 {
@@ -1132,75 +1206,5 @@ void Tree::Subtract( ATriangleMeshInterface* _mesh )
 {
 UNDONE;
 }
-
-#if 0
-static
-void Dbg_ValidateNode_R( Tree & tree, UINT32 nodeIndex )
-{
-	const Node& node = tree.m_nodes[ nodeIndex ];
-
-	if( node.IsInternal() )
-	{
-		mxASSERT( tree.m_planes.IsValidIndex( node.node.plane ) );
-		mxASSERT( tree.m_nodes.IsValidIndex( node.front ) );
-		mxASSERT( tree.m_nodes.IsValidIndex( node.back ) );
-		
-		Dbg_ValidateNode_R( tree, node.front );
-		Dbg_ValidateNode_R( tree, node.back );
-	}
-}
-
-static
-void Dbg_DumpNode_R( Tree & tree, UINT32 nodeIndex, UINT32 depth = 0 )
-{
-	const Node& node = tree.m_nodes[ nodeIndex ];
-
-	for(UINT32 i=0; i<depth; i++)
-	{
-		DBGOUT(" ");
-	}
-	if( node.IsInternal() )
-	{
-		DBGOUT("Inner node@%u: plane=%u, neg=%u, pos=%u\n"
-			,nodeIndex,(UINT32)node.node.plane,(UINT32)node.back,(UINT32)node.front
-			);
-
-		Dbg_DumpNode_R( tree, node.front, depth+1 );
-		Dbg_DumpNode_R( tree, node.back, depth+1 );
-	}
-	else
-	{
-		DBGOUT("%s leaf@%u\n",
-			node.type==BN_Solid ? "Solid" : "Empty", nodeIndex);
-	}
-}
-#endif
-
-#if 0
-struct pxPolygonCollector : pxTriangleIndexCallback
-{
-	PolygonList &	m_polygons;
-
-	pxPolygonCollector( PolygonList & polygons )
-		: m_polygons( polygons )
-	{
-	}
-	virtual void ProcessTriangle( const Float3& p0, const Float3& p1, const Float3& p2 ) override
-	{
-		Poly & newPolygon = m_polygons.Add();
-
-		// need to reverse winding (different culling in D3D11 renderer and id's winding)
-#if 0
-		newPolygon.AddPoint( p0 );
-		newPolygon.AddPoint( p1 );
-		newPolygon.AddPoint( p2 );
-#else
-		newPolygon.AddPoint( p2 );
-		newPolygon.AddPoint( p1 );
-		newPolygon.AddPoint( p0 );
-#endif
-	}
-};
-#endif
 
 }//namespace BSP

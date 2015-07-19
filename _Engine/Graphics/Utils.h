@@ -5,6 +5,7 @@
 #include <Base/Util/Color.h>
 #include <Graphics/Device.h>
 #include <Graphics/Effects.h>
+#if 0
 
 // Vertex type used for auxiliary rendering (editor/debug visualization/etc)
 #pragma pack (push,1)
@@ -64,6 +65,43 @@ public:
 	virtual ~AuxRenderer() {}
 };
 
+class PlatformRenderer
+{
+public:
+	virtual ERet Initialize() = 0;
+	virtual void Shutdown() = 0;
+	virtual void Draw(
+		const AuxVertex* _vertices,
+		const UINT32 _numVertices,
+		const UINT16* _indices,
+		const UINT32 _numIndices,
+		const Topology::Enum topology,
+		const FxShader& shader
+	) = 0;
+};
+class MyRenderer : public PlatformRenderer
+{
+	UINT32				m_VBSize;
+	UINT32				m_IBSize;
+	HBuffer				m_dynamicVB;
+	HBuffer				m_dynamicIB;
+	HInputLayout		m_layout;
+	UINT8				m_vertexStride;
+	UINT8				m_indexStride;
+public:
+	virtual ERet Initialize() override;
+	virtual void Shutdown() override;
+
+	virtual void Draw(
+		const AuxVertex* _vertices,
+		const UINT32 _numVertices,
+		const UINT16* _indices,
+		const UINT32 _numIndices,
+		const Topology::Enum topology,
+		const FxShader& shader
+	) override;
+};
+
 /*
 --------------------------------------------------------------
 	BatchRenderer
@@ -78,7 +116,7 @@ public:
 	BatchRenderer();
 	~BatchRenderer();
 
-	ERet Initialize( UINT32 vertexBufferSize = mxMiB(4), UINT32 indexBufferSize = mxMiB(2) );
+	ERet Initialize( PlatformRenderer* renderer );
 	void Shutdown();
 
 	// Fixed-function pipeline emulation
@@ -245,121 +283,25 @@ public_internal:
 	TArray< BYTE >		m_batchedVertices;
 	TArray< BYTE >		m_batchedIndices;
 
-	UINT32				m_VBSize;
-	UINT32				m_IBSize;
-	HBuffer				m_dynamicVB;
-	HBuffer				m_dynamicIB;
-	HInputLayout		m_layout;
-	UINT8				m_vertexStride;
-	UINT8				m_indexStride;
-
 	TopologyT			m_topology;
-
 	TPtr< FxShader >	m_technique;
+
+	TPtr< PlatformRenderer >	m_renderer;
+
+	//UINT32				m_VBSize;
+	//UINT32				m_IBSize;
+	//HBuffer				m_dynamicVB;
+	//HBuffer				m_dynamicIB;
+	//HInputLayout		m_layout;
+	//UINT8				m_vertexStride;
+	//UINT8				m_indexStride;
+
+	//TopologyT			m_topology;
+
+	//TPtr< FxShader >	m_technique;
 
 	//Float4x4				m_transform;
 };
-
-/*
-=======================================================================
-	DEBUG FONT
-=======================================================================
-*/
-mxSWIPED("DirectXTK - the DirectX Tool Kit");
-namespace Fonts
-{
-#pragma pack(push,1)
-	struct FileHeader
-	{
-		UINT32		magic;
-		FLOAT32		lineSpacing;	// vertical spacing
-		UINT32		defaultChar;
-		UINT32		numGlyphs;
-		// followed by:
-		// FontGlyph glyphs[ numGlyphs ];
-		// BitmapHeader;
-		// texture data.
-	};
-	struct SubRect
-	{
-		UINT32		left;
-		UINT32		top;
-		UINT32		right;
-		UINT32		bottom;
-	};
-	struct Glyph
-	{
-		UINT32		Character;  // unicode character code
-		SubRect		Subrect;    // texture rect, in texels
-		FLOAT32		XOffset;    // dunno, something in texels
-		FLOAT32		YOffset;    // small letters are shifted down by this value (in texels)
-		FLOAT32		XAdvance;   // dunno, something in texels
-	};
-	struct BitmapHeader
-	{
-		UINT32		width;	// in texels
-		UINT32		height;	// in texels
-		UINT32		format;	// DXGI_FORMAT
-		UINT32		pitch;
-		UINT32		rows;
-		// followed by:
-		// BYTE imageData[ pitch * rows ];
-	};
-#pragma pack(pop)
-
-	struct SpriteFont
-	{
-		TBuffer< Glyph >	m_glyphs;
-		const Glyph *		m_default;
-		float				m_lineSpacing;    // vertical spacing
-		HTexture			m_textureAtlas;
-		HResource			m_resourceHandle;
-		float				m_invTextureWidth;
-		float				m_invTextureHeight;
-	public:
-		SpriteFont();
-		~SpriteFont();
-
-		ERet Load( AStreamReader& stream );
-		void Shutdown();
-
-		const Glyph* FindGlyph( UNICODECHAR character ) const;
-		bool ContainsCharacter( UNICODECHAR character ) const;
-		void SetDefaultCharacter( UNICODECHAR character );
-
-		float GetLineSpacing() const;
-		void MeasureString( _In_z_ wchar_t const* text, float *width, float *height );
-
-		template< typename WHAT >    // where WHAT has operator () ( const Glyph& glyph, float x, float y, UINT32 index, void* userData )
-		void TForEachGlyph( _In_z_ wchar_t const* text, WHAT action, void* userData ) const;
-
-		typedef void GlyphCallback( const Glyph& glyph, float x, float y, UINT32 index, void* userData );
-		void ForEachGlyph( _In_z_ wchar_t const* text, GlyphCallback* callback, void* userData ) const;
-	};
-
-	class FontRenderer
-	{
-		HBuffer			m_vertexBuffer;
-		HInputLayout	m_vertexLayout;
-	public:
-		FontRenderer();
-
-		ERet Initialize();
-		void Shutdown();
-
-		// x and y are in viewport coordinates of the text sprite's top left corner
-		ERet RenderText(
-			HContext _context, llgl::DrawCall& batch,
-			UINT16 screenWidth, UINT16 screenHeight,
-			const SpriteFont* font,
-			UINT16 x, UINT16 y,
-			const char* text, UINT16 length = 0
-			);
-	};
-
-}// namespace Fonts
-
-
 // this can be used for drawing translation gizmo arrows / coordinate frames
 struct AxisArrowGeometry
 {
@@ -396,6 +338,6 @@ void DrawGizmo( const AxisArrowGeometry& gizmo, const Float4x4& localToWorld, co
 		TArray< UINT16 >	indices;
 	};
 
-//--------------------------------------------------------------//
+#endif//--------------------------------------------------------------//
 //				End Of File.									//
 //--------------------------------------------------------------//
