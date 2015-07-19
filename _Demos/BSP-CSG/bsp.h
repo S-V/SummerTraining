@@ -34,7 +34,7 @@ mxDECLARE_POD_TYPE(Vertex);
 struct RayCastResult
 {
 	Float3	position;
-	Float3	normal;
+	//Float3	normal;
 	bool hitAnything;
 public:
 	RayCastResult()

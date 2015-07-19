@@ -925,38 +925,45 @@ size_t Tree::BytesAllocated() const
 //	return fixedNormal;
 //}
 
-#if 0
+#if 1
 int CastRay_R(
 			 const Float3& start, const Float3& direction,
 			 const Tree& tree, const int nodeIndex,
 			 float tmin, float tmax,
 			 float *thit
-			 ) const
+			 )
 {
 	if( nodeIndex >= 0 )
 	{
 		const Node& node = tree.m_nodes[ nodeIndex ];
 		const Vector4& plane = tree.m_planes[ node.plane ];
 		const float distance = Plane_PointDistance( plane, start );
+		const float denom = Float3_Dot( Plane_GetNormal(plane), direction );
 		const int nearIndex = (distance >= 0.f);	// child of Node for half-space containing the origin of Ray: 1 - front, 0 - back
 		const int sides[2] = { (INT16)node.back, (INT16)node.front };
-
-		const float denom = Float3_Dot( Plane_GetNormal(plane), direction );
+		int firstSide = nearIndex;
 		// If denom is zero, ray runs parallel to plane. In this case,
 		// just fall through to visit the near side (the one 'start' lies on)
 		if( denom != 0.0f )
 		{
-			float t = distance / denom;
-			if (0.0f <= t && t <= tmax) {
-				if (t >= tmin) {
-					// Straddling, push far side onto stack, then visit near side
-					nodeStack.push(node->child[1^nearIndex]);
-					timeStack.push(tmax);
-					tmax = t;
-				} else nearIndex = 1^nearIndex;// 0 <= t < tmin, visit far side
+			float t = -distance / denom;
+			//DBGOUT("t=%f", t);
+			if( 0.0f <= t && t <= tmax )
+			{
+				if( t >= tmin ) {
+					// visit near side
+					if( CastRay_R( start, direction, tree, sides[ firstSide ], tmin, t, thit ) ) {
+						return 1;
+					}
+					// visit far side
+					return CastRay_R( start, direction, tree, sides[ firstSide^1 ], t, tmax, thit );
+				} else {
+					// 0 <= t < tmin, only the far side needs to be traversed
+					firstSide = 1^firstSide;
+				}
 			}
 		}
-		return CastRay_R(start, direction, tree, sides[ nearIndex ], tmin, tmax);
+		return CastRay_R( start, direction, tree, sides[ firstSide ], tmin, tmax, thit );
 	}
 	else
 	{
@@ -975,28 +982,11 @@ void Tree::CastRay(
 			 RayCastResult &result
 			 ) const
 {
-	int nodeIndex = 0;
-	float distance = 0.f;
-	// If < 0, we are in a leaf node
-	while( nodeIndex >= 0 )
-	{
-		// Find which side of the node we are on
-		const Node& node = m_nodes[ nodeIndex ];
-		const Vector4& plane = m_planes[ node.plane ];
-		distance = Plane_PointDistance( plane, point );
-		const int nearIndex = (distance >= 0.f);	// child of Node for half-space containing the origin of Ray: 1 - front, 0 - back
-		const int sides[2] = { (INT16)node.back, (INT16)node.front };
-		// Go down the appropriate side
-		if( distance > +epsilon ) {
-			nodeIndex = (INT16)node.front;
-		} else if( distance < -epsilon ) {
-			nodeIndex = (INT16)node.back;
-		} else {
-			nodeIndex = sides[ nearIndex ];
-		}
+	float thit;
+	result.hitAnything = CastRay_R(start,direction,*this,0,0.0f,9999.0f, &thit);
+	if(result.hitAnything){
+		result.position = start + direction * thit;
 	}
-	// return the minimum (closest) distance
-	return distance;
 }
 #endif
 

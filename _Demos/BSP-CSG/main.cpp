@@ -182,7 +182,6 @@ ERet MyEntryPoint()
 			bx::mtxTranslate(mtx,lastHit.position.x,lastHit.position.y,lastHit.position.z);
 			bx::mtxScale(mtx,0.3,0.3,0.3);
 
-
 			bgfx::setTransform(mtx);
 
 			bgfx::setVertexBuffer(renderer.vbh);
@@ -198,14 +197,22 @@ ERet MyEntryPoint()
 				| BGFX_STATE_DEPTH_TEST_LESS
 				| BGFX_STATE_MSAA
 				);
-			bgfx::submit(RENDER_PASS_DEBUG_LINES_3D);
+			bgfx::submit(RENDER_PASS_GEOMETRY_ID);
 		}
 
 		renderer.EndFrame();
 
 		if( !!mouseState.m_buttons[entry::MouseButton::Left] )
 		{
-			DBGOUT("LMB down!");
+			Float3 rayPos, lookAt, rayDir;
+			cameraGetPosition((float*)&rayPos);
+			cameraGetAt((float*)&lookAt);
+			rayDir = Float3_Normalized(lookAt - rayPos);
+
+			tree.CastRay( rayPos, rayDir, lastHit );
+			if(lastHit.hitAnything) {
+				LogStream(LL_Info) << "Hit pos: " << lastHit.position;
+			}
 		}
 	}
 
