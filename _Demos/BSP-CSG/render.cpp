@@ -222,13 +222,13 @@ ERet Renderer::Initialize()
 		);
 
 	// Create static vertex buffer.
-	vbh = bgfx::createVertexBuffer(
+	cubeVB = bgfx::createVertexBuffer(
 		  bgfx::makeRef(s_cubeVertices, sizeof(s_cubeVertices) )
 		, PosNormalTangentTexcoordVertex::ms_decl
 		);
 
 	// Create static index buffer.
-	ibh = bgfx::createIndexBuffer(bgfx::makeRef(s_cubeIndices, sizeof(s_cubeIndices) ) );
+	cubeIB = bgfx::createIndexBuffer(bgfx::makeRef(s_cubeIndices, sizeof(s_cubeIndices) ) );
 
 	// Create texture sampler uniforms.
 	s_texColor  = bgfx::createUniform("s_texColor",  bgfx::UniformType::Int1);
@@ -282,8 +282,8 @@ void Renderer::Shutdown()
 		bgfx::destroyFrameBuffer(lightBuffer);
 	}
 
-	bgfx::destroyIndexBuffer(ibh);
-	bgfx::destroyVertexBuffer(vbh);
+	bgfx::destroyIndexBuffer(cubeIB);
+	bgfx::destroyVertexBuffer(cubeVB);
 
 	bgfx::destroyProgram(geomProgram);
 	bgfx::destroyProgram(lightProgram);
@@ -433,8 +433,8 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 			bgfx::setProgram(geomProgram);
 
 			// Set vertex and index buffer.
-			bgfx::setVertexBuffer(vbh);
-			bgfx::setIndexBuffer(ibh);
+			bgfx::setVertexBuffer(cubeVB);
+			bgfx::setIndexBuffer(cubeIB);
 
 			// Bind textures.
 			bgfx::setTexture(0, s_texColor,  textureColor);
@@ -666,8 +666,8 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 				);
 			bgfx::setTransform(mtx);
 			bgfx::setProgram(debugProgram);
-			bgfx::setVertexBuffer(vbh);
-			bgfx::setIndexBuffer(ibh, 0, 6);
+			bgfx::setVertexBuffer(cubeVB);
+			bgfx::setIndexBuffer(cubeIB, 0, 6);
 			bgfx::setTexture(0, s_texColor, gbufferTex[ii]);
 			bgfx::setState(BGFX_STATE_RGB_WRITE);
 			bgfx::submit(RENDER_PASS_DEBUG_GBUFFER_ID);
@@ -722,8 +722,8 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 				bgfx::setProgram(forwardProgram);
 
 				// Set vertex and index buffer.
-				bgfx::setVertexBuffer(vbh);
-				bgfx::setIndexBuffer(ibh);
+				bgfx::setVertexBuffer(cubeVB);
+				bgfx::setIndexBuffer(cubeIB);
 
 				// Bind textures.
 				bgfx::setTexture(0, s_texColor,  textureColor);

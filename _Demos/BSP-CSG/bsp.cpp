@@ -1,3 +1,17 @@
+/*
+Useful references:
+BSP Tips
+October 30, 2000
+by Charles Bloom, cbloom@cbloom.com
+http://www.cbloom.com/3d/techdocs/bsp_tips.txt
+
+source code:
+CSGTOOL is a library, Ruby Gem and command line tool for performing Constructive Solid Geometry operations on STL Files using 3D BSP Trees.
+https://github.com/sshirokov/csgtool
+
+CSG:
+Efficient Boundary Extraction of BSP Solids Based on Clipping Operations
+*/
 #include "bsp.h"
 
 namespace BSP

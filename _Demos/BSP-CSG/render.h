@@ -62,6 +62,7 @@ struct PosTexCoord0Vertex
 	float m_z;
 	float m_u;
 	float m_v;
+	//20
 
 	static void init()
 	{
@@ -112,8 +113,8 @@ public:
 	uint32_t debug;
 	uint32_t reset;
 
-	bgfx::VertexBufferHandle vbh;
-	bgfx::IndexBufferHandle ibh;
+	bgfx::VertexBufferHandle cubeVB;
+	bgfx::IndexBufferHandle cubeIB;
 
 	bgfx::UniformHandle s_texColor;
 	bgfx::UniformHandle s_texNormal;

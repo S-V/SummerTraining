@@ -24,6 +24,12 @@ const UINT16 g_planeIndices[6] = {
 	0, 1, 2, 0, 2, 3,
 };
 
+// [-32768..32767] => [-1..+1]
+float Short_To_Normal( INT16 x )
+{
+	return (x == -32768) ? -1.f : ((float)x * (1.0f/32767.0f));
+}
+
 ERet MyEntryPoint()
 {
 	SetupBaseUtil	setupBase;
@@ -61,8 +67,24 @@ ERet MyEntryPoint()
 		tree.Build( &enumerateMeshVertices );
 	}
 
+	BSP::Tree	operand;
 	{
+		BSP::Vertex cubeVertices[BX_COUNTOF(s_cubeVertices)];
+		for( int iVertex = 0; iVertex < BX_COUNTOF(s_cubeVertices); iVertex++ )
+		{
+			cubeVertices[iVertex].xyz.x = s_cubeVertices[iVertex].m_x;
+			cubeVertices[iVertex].xyz.y = s_cubeVertices[iVertex].m_y;
+			cubeVertices[iVertex].xyz.z = s_cubeVertices[iVertex].m_z;
+			cubeVertices[iVertex].N = s_cubeVertices[iVertex].m_normal;
+			cubeVertices[iVertex].T = s_cubeVertices[iVertex].m_tangent;
+			cubeVertices[iVertex].UV.x = Short_To_Normal(s_cubeVertices[iVertex].m_u);
+			cubeVertices[iVertex].UV.y = Short_To_Normal(s_cubeVertices[iVertex].m_v);
+		}
 
+		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
+			cubeVertices, BX_COUNTOF(cubeVertices), s_cubeIndices, BX_COUNTOF(s_cubeIndices)
+		);
+		operand.Build( &enumerateMeshVertices );
 	}
 
 
@@ -179,13 +201,13 @@ ERet MyEntryPoint()
 		if( lastHit.hitAnything )
 		{
 			float mtx[16];
-			bx::mtxTranslate(mtx,lastHit.position.x,lastHit.position.y,lastHit.position.z);
+			bx::mtxTranslate(mtx,lastHit.position.x, lastHit.position.y, lastHit.position.z);
 			bx::mtxScale(mtx,0.3,0.3,0.3);
 
 			bgfx::setTransform(mtx);
 
-			bgfx::setVertexBuffer(renderer.vbh);
-			bgfx::setIndexBuffer(renderer.ibh);
+			bgfx::setVertexBuffer(renderer.cubeVB);
+			bgfx::setIndexBuffer(renderer.cubeIB);
 
 			bgfx::setTexture(0, renderer.s_texColor,  renderer.textureColor);
 			bgfx::setTexture(1, renderer.s_texNormal, renderer.textureNormal);

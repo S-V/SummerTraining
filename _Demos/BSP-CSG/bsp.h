@@ -1,3 +1,9 @@
+/*
+some ideas on how to reduce memory consumption:
+- store polygons in 2D (plane is known)
+- don't store UVs per each vertex - store polygon's basis
+- don't store polygons at all - derive b-rep (or, at least, some vertex attributes)
+*/
 #include <Base/Base.h>
 #include <Core/Core.h>
 
@@ -12,7 +18,7 @@ struct Vertex
 	UINT32 N;
 	UINT32 T;
 	Float2 UV;
-	float c;
+	float c;	// unused padding
 	//!32
 public:
 	static bgfx::VertexDecl ms_decl;
@@ -83,6 +89,28 @@ struct ATriangleMeshInterface : DbgNamedObject<>
 {
 	virtual void ProcessAllTriangles( ATriangleIndexCallback* callback ) = 0;
 	virtual ~ATriangleMeshInterface() {}
+};
+
+template< class VERTEX, typename INDEX >
+struct TProcessTriangles : public ATriangleMeshInterface
+{
+	const VERTEX* m_vertices;
+	const int m_numVertices;
+	const INDEX* m_indices;
+	const int m_numIndices;
+public:
+	TProcessTriangles( const VERTEX* vertices, int numVertices, const INDEX* indices, int numIndices )
+		: m_vertices( vertices ), m_numVertices( numVertices ), m_indices( indices ), m_numIndices( numIndices )
+	{}
+	virtual void ProcessAllTriangles( ATriangleIndexCallback* callback ) override
+	{
+		const int numTriangles = m_numIndices / 3;
+		for( int i = 0; i < numTriangles; i++ )
+		{
+			const INDEX* tri = m_indices + i*3;
+			callback->ProcessTriangle( m_vertices[tri[0]], m_vertices[tri[1]], m_vertices[tri[2]] );
+		}
+	}
 };
 
 typedef UINT16 BspNodeID;
