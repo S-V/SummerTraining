@@ -180,8 +180,8 @@ public:
 */
 struct Tree : public CStruct
 {
-	TArray< Node >		m_nodes;	// tree nodes (0 = root index)
 	TArray< Vector4 >	m_planes;	// plane equations (16 bytes per plane)
+	TArray< Node >		m_nodes;	// tree nodes (0 = root index)
 	TArray< Poly >		m_polys;
 	//TArray< NodeData >	m_nodeData;
 public:
@@ -214,9 +214,12 @@ public:
 
 	size_t BytesAllocated() const;
 
-	void Subtract( ATriangleMeshInterface* _mesh );
+	void Subtract( const Tree& other );
 
 	void GenerateMesh();
+
+	void Negate();
+	void Translate( const Float3& T );
 };
 
 // Special node ids.
@@ -264,6 +267,11 @@ public:
 		planeEpsilon = 0.017f;
 	}
 };
+
+namespace Debug
+{
+	void PrintTree( const Tree& tree );
+}//namespace Debug
 
 #if 0
 namespace BSP

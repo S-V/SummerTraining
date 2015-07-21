@@ -44,6 +44,31 @@ ERet MyEntryPoint()
 	calcTangents( g_planeVertices, BX_COUNTOF(g_planeVertices), BSP::Vertex::ms_decl,
 		g_planeIndices, BX_COUNTOF(g_planeIndices) );
 
+
+
+	BSP::Tree	operand;
+	{
+		BSP::Vertex cubeVertices[BX_COUNTOF(s_cubeVertices)];
+		for( int iVertex = 0; iVertex < BX_COUNTOF(s_cubeVertices); iVertex++ )
+		{
+			cubeVertices[iVertex].xyz.x = s_cubeVertices[iVertex].m_x;
+			cubeVertices[iVertex].xyz.y = s_cubeVertices[iVertex].m_y;
+			cubeVertices[iVertex].xyz.z = s_cubeVertices[iVertex].m_z;
+			cubeVertices[iVertex].N = s_cubeVertices[iVertex].m_normal;
+			cubeVertices[iVertex].T = s_cubeVertices[iVertex].m_tangent;
+			cubeVertices[iVertex].UV.x = Short_To_Normal(s_cubeVertices[iVertex].m_u);
+			cubeVertices[iVertex].UV.y = Short_To_Normal(s_cubeVertices[iVertex].m_v);
+		}
+
+		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
+			cubeVertices, BX_COUNTOF(cubeVertices), s_cubeIndices, BX_COUNTOF(s_cubeIndices)
+		);
+		operand.Build( &enumerateMeshVertices );
+
+		BSP::Debug::PrintTree(operand);
+	}
+
+
 	BSP::Tree	tree;
 	{
 		using namespace BSP;
@@ -66,27 +91,6 @@ ERet MyEntryPoint()
 
 		tree.Build( &enumerateMeshVertices );
 	}
-
-	BSP::Tree	operand;
-	{
-		BSP::Vertex cubeVertices[BX_COUNTOF(s_cubeVertices)];
-		for( int iVertex = 0; iVertex < BX_COUNTOF(s_cubeVertices); iVertex++ )
-		{
-			cubeVertices[iVertex].xyz.x = s_cubeVertices[iVertex].m_x;
-			cubeVertices[iVertex].xyz.y = s_cubeVertices[iVertex].m_y;
-			cubeVertices[iVertex].xyz.z = s_cubeVertices[iVertex].m_z;
-			cubeVertices[iVertex].N = s_cubeVertices[iVertex].m_normal;
-			cubeVertices[iVertex].T = s_cubeVertices[iVertex].m_tangent;
-			cubeVertices[iVertex].UV.x = Short_To_Normal(s_cubeVertices[iVertex].m_u);
-			cubeVertices[iVertex].UV.y = Short_To_Normal(s_cubeVertices[iVertex].m_v);
-		}
-
-		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
-			cubeVertices, BX_COUNTOF(cubeVertices), s_cubeIndices, BX_COUNTOF(s_cubeIndices)
-		);
-		operand.Build( &enumerateMeshVertices );
-	}
-
 
 	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );

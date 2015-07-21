@@ -184,8 +184,13 @@ LogStream::LogStream( ELogLevel level )
 }
 LogStream::~LogStream()
 {
+	this->Flush();
+}
+void LogStream::Flush()
+{
 	if( m_buffer.Num() ) {
 		mxGetLog().VWrite(m_level, m_buffer.ToPtr(), m_buffer.Num());
+		m_buffer.Empty();
 	}
 }
 

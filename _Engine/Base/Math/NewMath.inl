@@ -212,7 +212,12 @@ inline const float Plane_PointDistance( const Float4& plane, const Float3& point
 {
 	return plane.x * point.x + plane.y * point.y + plane.z * point.z + plane.w;
 }
-
+inline const Float4 Plane_Translate( const Float4& plane, const Float3& translation )
+{
+	Float4 result = plane;
+	result.w = -Float3_Dot( Plane_GetNormal(plane), translation );
+	return result;
+}
 inline const Half2 Float2_To_Half2( const Float2& xy )
 {
 	Half2 result = { Float_To_Half(xy.x), Float_To_Half(xy.y) };

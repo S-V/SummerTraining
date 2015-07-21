@@ -239,6 +239,8 @@ public:
 	LogStream( ELogLevel level );
 	virtual ~LogStream();
 
+	void Flush();
+
 	PREVENT_COPY(LogStream);
 };
 

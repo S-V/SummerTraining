@@ -9,8 +9,10 @@ source code:
 CSGTOOL is a library, Ruby Gem and command line tool for performing Constructive Solid Geometry operations on STL Files using 3D BSP Trees.
 https://github.com/sshirokov/csgtool
 
-CSG:
+Papers:
 Efficient Boundary Extraction of BSP Solids Based on Clipping Operations
+
+http://www.me.mtu.edu/~rmdsouza/CSG_BSP.html
 */
 #include "bsp.h"
 
@@ -84,8 +86,8 @@ mxEND_REFLECTION;
 */
 mxDEFINE_CLASS(Tree);
 mxBEGIN_REFLECTION(Tree)
+	mxMEMBER_FIELD( m_planes ),	
 	mxMEMBER_FIELD( m_nodes ),
-	mxMEMBER_FIELD( m_planes ),
 	mxMEMBER_FIELD( m_polys ),
 mxEND_REFLECTION;
 Tree::Tree()
@@ -1206,9 +1208,68 @@ int RayIntersect(BSPNode *node, Point p, Vector d, float tmin, float tmax, float
 }
 #endif
 
-void Tree::Subtract( ATriangleMeshInterface* _mesh )
+void Tree::Subtract( const Tree& other )
 {
 UNDONE;
 }
+
+void Tree::Negate()
+{
+UNDONE;
+}
+void Tree::Translate( const Float3& T )
+{
+	for( UINT32 iPlane = 0; iPlane < m_planes.Num(); iPlane++ )
+	{
+		m_planes[iPlane] = Plane_Translate( m_planes[iPlane], T );
+	}
+	for( UINT32 iPoly = 0; iPoly < m_polys.Num(); iPoly++ )
+	{
+		Poly & poly = m_polys[iPoly];
+		for( UINT32 iVtx = 0; iVtx < poly.vertices.Num(); iVtx++ )
+		{
+			poly.vertices[iVtx].xyz += T;
+		}
+	}
+}
+
+namespace Debug
+{
+	static const String32 NodeID_To_String( INT16 nodeIndex )
+	{
+		String32 result;
+		if( nodeIndex >= 0 ) {
+			Str::SetInt( result, nodeIndex );
+		} else {
+			Str::CopyS( result, (nodeIndex == BSP_SOLID_LEAF) ? "Solid" : "Air" );
+		}
+		return result;
+	}
+	static void PrintTree_R( const Tree& tree, INT16 nodeIndex, int depth )
+	{
+		LogStream log(LL_Debug);
+		log.Repeat('\t', depth);
+
+		if( nodeIndex >= 0 )
+		{
+			const Node& node = tree.m_nodes[ nodeIndex ];
+			const Vector4& plane = tree.m_planes[ node.plane ];
+
+			log << "Node[" << nodeIndex << "]: neg=" << NodeID_To_String(node.back) << ", pos=" << NodeID_To_String(node.front);
+			log.Flush();
+
+			PrintTree_R( tree, (INT16)node.back, depth+1 );
+			PrintTree_R( tree, (INT16)node.front, depth+1 );			
+		}
+		else
+		{
+			log << "Leaf: " << NodeID_To_String(nodeIndex);
+		}
+	}
+	void PrintTree( const Tree& tree )
+	{
+		PrintTree_R(tree, 0, 0);
+	}
+}//namespace Debug
 
 }//namespace BSP
