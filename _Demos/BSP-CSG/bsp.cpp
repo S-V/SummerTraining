@@ -941,7 +941,6 @@ size_t Tree::BytesAllocated() const
 //	return fixedNormal;
 //}
 
-#if 1
 int CastRay_R(
 			 const Float3& start, const Float3& direction,
 			 const Tree& tree, const int nodeIndex,
@@ -1004,7 +1003,6 @@ void Tree::CastRay(
 		result.position = start + direction * thit;
 	}
 }
-#endif
 
 float Tree::CastRay( const Float3& start, const Float3& direction ) const
 {
@@ -1208,9 +1206,44 @@ int RayIntersect(BSPNode *node, Point p, Vector d, float tmin, float tmax, float
 }
 #endif
 
+static EPlaneSide PartitionNodeWithPlane(
+	Tree & tree, int node,
+	const Vector4& plane,
+	int *front, int *back
+	)
+{
+	UNDONE;
+	return PLANESIDE_CROSS;
+}
+
+// computes boolean A - B
+static void MergeSubtract( Tree & treeA, BspNodeID * nodeA, Tree & treeB, BspNodeID nodeB )
+{
+	if( nodeA >= 0 )
+	{
+		Node& node = treeA.m_nodes[ *nodeA ];
+		const Vector4& plane = treeA.m_planes[ node.plane ];
+
+		int nodeB_front = -1;
+		int nodeB_back = -1;
+		PartitionNodeWithPlane( treeB, nodeB, plane, &nodeB_front, &nodeB_back );
+
+		MergeSubtract( treeA, &node.front, treeB, nodeB_front );
+		MergeSubtract( treeA, &node.back, treeB, nodeB_back );
+	}
+	else
+	{
+		// this is a leaf node
+		if( (INT16)*nodeA == BSP_SOLID_LEAF )
+		{
+			*nodeA = nodeB;
+		}
+	}
+}
+
 void Tree::Subtract( const Tree& other )
 {
-UNDONE;
+	//MergeSubtract( *this, 0, other, 0 );
 }
 
 void Tree::Negate()
