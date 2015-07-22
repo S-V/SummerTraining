@@ -21,6 +21,12 @@ struct Vertex
 	float c;	// unused padding
 	//!32
 public:
+	Vertex()
+	{}
+	Vertex( const Float3& pos, UINT32 normal, UINT32 tangent, const Float2& texCoord )
+		: xyz( pos ), N( normal ), T( tangent ), UV( texCoord )
+	{}
+
 	static bgfx::VertexDecl ms_decl;
 	static void init()
 	{
@@ -214,6 +220,7 @@ public:
 
 	size_t BytesAllocated() const;
 
+	void CopyFrom( const Tree& other );
 	void Subtract( const Tree& other );
 
 	void GenerateMesh();

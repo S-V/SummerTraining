@@ -1282,7 +1282,7 @@ static EPlaneSide PartitionPolygons2(
 	}
 	return PLANESIDE_CROSS;
 }
-#if 0
+#if 1
 
 static EPlaneSide PartitionNodeWithPlane(
 	const Vector4& partitioner,
@@ -1332,6 +1332,7 @@ static EPlaneSide PartitionNodeWithPlane(
 
 	}//End of case if coplanar
 
+#if 0
 	else if ( side == PLANESIDE_FRONT )
 	{
 		mxASSERT2( frontPolys, "All the polygons of the node must be in front of the splitting splitPlane" );
@@ -1406,7 +1407,7 @@ static EPlaneSide PartitionNodeWithPlane(
 			// node->frontChild remains intact...
 		}
 	}//End of case "No front polys"
-
+#endif
 	else
 	{
 		// Split both children of the node.
@@ -1415,10 +1416,10 @@ static EPlaneSide PartitionNodeWithPlane(
 		*front = NewNode( tree );
 		*back = NewNode( tree );
 
-		tree.m_nodes[ *front ].plane = nodePlane;
+		tree.m_nodes[ *front ].plane = node.plane;
 		tree.m_nodes[ *front ].faces = frontPolys;
 
-		tree.m_nodes[ *back ].plane = nodePlane;
+		tree.m_nodes[ *back ].plane = node.plane;
 		tree.m_nodes[ *back ].faces = backPolys;
 
 
@@ -1441,8 +1442,56 @@ static EPlaneSide PartitionNodeWithPlane(
 	return side;
 }
 
+#if 0
+static int AppendTree( Tree & treeA, const Tree& treeB )
+{
+	const int planeOffset = treeA.m_planes.Num();
+	const int nodeOffset = treeA.m_nodes.Num();
+	const int faceOffset = treeA.m_polys.Num();
+
+	const int newPlanes = treeB.m_planes.Num();
+	const int newNodes = treeB.m_nodes.Num();
+	const int newFaces = treeB.m_polys.Num();
+
+	treeA.m_planes.ReserveMore( newPlanes );
+	treeA.m_nodes.ReserveMore( newNodes );
+	treeA.m_polys.ReserveMore( newFaces );
+
+	for( UINT32 iPlane = 0; iPlane < m_planes.Num(); iPlane++ )
+	{
+		m_planes[iPlane] = Plane_Translate( m_planes[iPlane], T );
+	}
+	for( UINT32 iPoly = 0; iPoly < m_polys.Num(); iPoly++ )
+	{
+		Poly & poly = m_polys[iPoly];
+		for( UINT32 iVtx = 0; iVtx < poly.vertices.Num(); iVtx++ )
+		{
+			poly.vertices[iVtx].xyz += T;
+		}
+	}
+
+
+	return firstNodeId;
+}
+#endif
+
+// treeA <- (treeB, nodeB)
+static int CopySubTree( Tree & treeA, const Tree& treeB, int nodeB )
+{
+	int subtreeId = 0;
+	if( nodeB >= 0 )
+	{
+
+	}
+	else
+	{
+		subtreeId = nodeB;
+	}
+	return subtreeId;
+}
+
 // computes boolean A - B
-static void MergeSubtract( Tree & treeA, BspNodeID * nodeA, Tree & treeB, BspNodeID nodeB )
+static void MergeSubtract( Tree & treeA, BspNodeID * nodeA, const Tree& treeB, const BspNodeID nodeB )
 {
 	if( *nodeA >= 0 )
 	{
@@ -1450,10 +1499,10 @@ static void MergeSubtract( Tree & treeA, BspNodeID * nodeA, Tree & treeB, BspNod
 		Node& node = treeA.m_nodes[ *nodeA ];
 		const Vector4& plane = treeA.m_planes[ node.plane ];
 
-		int nodeB_front = -1;
-		int nodeB_back = -1;
-		PartitionNodeWithPlane( plane, treeB, nodeB, &nodeB_front, &nodeB_back );
-
+		int nodeB_front = BSP_NONE;
+		int nodeB_back = BSP_NONE;
+		//PartitionNodeWithPlane( plane, treeB, nodeB, &nodeB_front, &nodeB_back );
+UNDONE;
 		MergeSubtract( treeA, &node.front, treeB, nodeB_front );
 		MergeSubtract( treeA, &node.back, treeB, nodeB_back );
 	}
@@ -1462,7 +1511,7 @@ static void MergeSubtract( Tree & treeA, BspNodeID * nodeA, Tree & treeB, BspNod
 		// this is a leaf node
 		if( (INT16)*nodeA == BSP_SOLID_LEAF )
 		{
-			*nodeA = nodeB;
+			*nodeA = CopySubTree( treeA, treeB, nodeB );
 		}
 		// empty space - do nothing
 	}
@@ -1473,6 +1522,37 @@ void Tree::Subtract( const Tree& other )
 	MergeSubtract( *this, 0, other, 0 );
 }
 #endif
+
+void Tree::CopyFrom( const Tree& other )
+{
+	m_planes = other.m_planes;
+	m_nodes = other.m_nodes;
+	m_polys = other.m_polys;
+	//const int planeOffset = treeA.m_planes.Num();
+	//const int nodeOffset = treeA.m_nodes.Num();
+	//const int faceOffset = treeA.m_polys.Num();
+
+	//const int newPlanes = treeB.m_planes.Num();
+	//const int newNodes = treeB.m_nodes.Num();
+	//const int newFaces = treeB.m_polys.Num();
+
+	//m_planes.Set( newPlanes );
+	//m_nodes.ReserveMore( newNodes );
+	//m_polys.ReserveMore( newFaces );
+
+	//for( UINT32 iPlane = 0; iPlane < m_planes.Num(); iPlane++ )
+	//{
+	//	m_planes[iPlane] = Plane_Translate( m_planes[iPlane], T );
+	//}
+	//for( UINT32 iPoly = 0; iPoly < m_polys.Num(); iPoly++ )
+	//{
+	//	Poly & poly = m_polys[iPoly];
+	//	for( UINT32 iVtx = 0; iVtx < poly.vertices.Num(); iVtx++ )
+	//	{
+	//		poly.vertices[iVtx].xyz += T;
+	//	}
+	//}
+}
 
 void Tree::Negate()
 {

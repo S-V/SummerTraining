@@ -14,20 +14,107 @@ static bgfx::DynamicIndexBufferHandle g_dynamicIB = BGFX_INVALID_HANDLE;
 static BSP::Vertex g_planeVertices[4] =
 {
 	//          XYZ              |            N              | T |    U  |  V
-	{ { -100.0f, 0.0f, -100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  {    0, 1.0f }, 0, },
-	{ { -100.0f, 0.0f,  100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  {    0,    0 }, 0, },
-	{ {  100.0f, 0.0f,  100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  { 1.0f,    0 }, 0, },
-	{ {  100.0f, 0.0f, -100.0f }, packF4u( 0.0f, 1.0f, 0.0f ), 0,  { 1.0f, 1.0f }, 0, },
+	BSP::Vertex( Float3_Set( -100.0f, 0.0f, -100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set(    0, 1.0f ) ),
+	BSP::Vertex( Float3_Set( -100.0f, 0.0f,  100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set(    0,    0 ) ),
+	BSP::Vertex( Float3_Set(  100.0f, 0.0f,  100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set( 1.0f,    0 ) ),
+	BSP::Vertex( Float3_Set(  100.0f, 0.0f, -100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set( 1.0f, 1.0f ) ),
 };
 
-const UINT16 g_planeIndices[6] = {
+static const UINT16 g_planeIndices[6] = {
 	0, 1, 2, 0, 2, 3,
 };
 
-// [-32768..32767] => [-1..+1]
-float Short_To_Normal( INT16 x )
+void MakeBoxMesh(
+				 float length, float height, float depth,
+				 TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices
+				 )
 {
-	return (x == -32768) ? -1.f : ((float)x * (1.0f/32767.0f));
+	enum { NUM_VERTICES = 24 };
+	enum { NUM_INDICES = 36 };
+
+	// Create vertex buffer.
+
+	vertices.SetNum( NUM_VERTICES );
+
+	const float HL = 0.5f * length;
+	const float HH = 0.5f * height;
+	const float HD = 0.5f * depth;
+
+	// Fill in the front face vertex data.
+	vertices[0]  = BSP::Vertex( Float3_Set( -HL, -HH, -HD ),	packF4u( 0.0f, 0.0f, -1.0f ), 	packF4u( 1.0f, 0.0f, 0.0f ), 	Float2_Set( 0.0f, 1.0f )	);
+	vertices[1]  = BSP::Vertex( Float3_Set( -HL,  HH, -HD ),	packF4u( 0.0f, 0.0f, -1.0f ), 	packF4u( 1.0f, 0.0f, 0.0f ), 	Float2_Set( 0.0f, 0.0f )	);
+	vertices[2]  = BSP::Vertex( Float3_Set(  HL,  HH, -HD ),	packF4u( 0.0f, 0.0f, -1.0f ), 	packF4u( 1.0f, 0.0f, 0.0f ), 	Float2_Set( 1.0f, 0.0f )	);
+	vertices[3]  = BSP::Vertex( Float3_Set(  HL, -HH, -HD ),	packF4u( 0.0f, 0.0f, -1.0f ), 	packF4u( 1.0f, 0.0f, 0.0f ), 	Float2_Set( 1.0f, 1.0f )	);
+
+	// Fill in the back face vertex data.
+	vertices[4]  = BSP::Vertex( Float3_Set( -HL, -HH, HD ), 	packF4u( 0.0f, 0.0f, 1.0f ), 	packF4u( -1.0f, 0.0f, 0.0f ),	Float2_Set( 1.0f, 1.0f )	);
+	vertices[5]  = BSP::Vertex( Float3_Set(  HL, -HH, HD ), 	packF4u( 0.0f, 0.0f, 1.0f ), 	packF4u( -1.0f, 0.0f, 0.0f ),	Float2_Set( 0.0f, 1.0f )	);
+	vertices[6]  = BSP::Vertex( Float3_Set(  HL,  HH, HD ), 	packF4u( 0.0f, 0.0f, 1.0f ), 	packF4u( -1.0f, 0.0f, 0.0f ),	Float2_Set( 0.0f, 0.0f )	);
+	vertices[7]  = BSP::Vertex( Float3_Set( -HL,  HH, HD ), 	packF4u( 0.0f, 0.0f, 1.0f ), 	packF4u( -1.0f, 0.0f, 0.0f ),	Float2_Set( 1.0f, 0.0f )	);
+
+	// Fill in the top face vertex data.
+	vertices[8]  = BSP::Vertex( Float3_Set( -HL, HH, -HD ),		packF4u( 0.0f, 1.0f, 0.0f ), 	packF4u( 1.0f, 0.0f, 0.0f ), 	Float2_Set( 0.0f, 1.0f )	);
+	vertices[9]  = BSP::Vertex( Float3_Set( -HL, HH,  HD ),		packF4u( 0.0f, 1.0f, 0.0f ), 	packF4u( 1.0f, 0.0f, 0.0f ), 	Float2_Set( 0.0f, 0.0f )	);
+	vertices[10] = BSP::Vertex( Float3_Set(  HL, HH,  HD ),		packF4u( 0.0f, 1.0f, 0.0f ), 	packF4u( 1.0f, 0.0f, 0.0f ), 	Float2_Set( 1.0f, 0.0f )	);
+	vertices[11] = BSP::Vertex( Float3_Set(  HL, HH, -HD ),		packF4u( 0.0f, 1.0f, 0.0f ), 	packF4u( 1.0f, 0.0f, 0.0f ), 	Float2_Set( 1.0f, 1.0f )	);
+
+	// Fill in the bottom face vertex data.
+	vertices[12] = BSP::Vertex( Float3_Set( -HL, -HH, -HD ),	packF4u( 0.0f, -1.0f, 0.0f ), 	packF4u( -1.0f, 0.0f, 0.0f ),	Float2_Set( 1.0f, 1.0f )	);
+	vertices[13] = BSP::Vertex( Float3_Set(  HL, -HH, -HD ),	packF4u( 0.0f, -1.0f, 0.0f ), 	packF4u( -1.0f, 0.0f, 0.0f ),	Float2_Set( 0.0f, 1.0f )	);
+	vertices[14] = BSP::Vertex( Float3_Set(  HL, -HH,  HD ),	packF4u( 0.0f, -1.0f, 0.0f ), 	packF4u( -1.0f, 0.0f, 0.0f ),	Float2_Set( 0.0f, 0.0f )	);
+	vertices[15] = BSP::Vertex( Float3_Set( -HL, -HH,  HD ),	packF4u( 0.0f, -1.0f, 0.0f ), 	packF4u( -1.0f, 0.0f, 0.0f ),	Float2_Set( 1.0f, 0.0f )	);
+
+	// Fill in the left face vertex data.
+	vertices[16] = BSP::Vertex( Float3_Set( -HL, -HH,  HD ),	packF4u( -1.0f, 0.0f, 0.0f ), 	packF4u( 0.0f, 0.0f, -1.0f ),	Float2_Set( 0.0f, 1.0f )	);
+	vertices[17] = BSP::Vertex( Float3_Set( -HL,  HH,  HD ),	packF4u( -1.0f, 0.0f, 0.0f ), 	packF4u( 0.0f, 0.0f, -1.0f ),	Float2_Set( 0.0f, 0.0f )	);
+	vertices[18] = BSP::Vertex( Float3_Set( -HL,  HH, -HD ),	packF4u( -1.0f, 0.0f, 0.0f ), 	packF4u( 0.0f, 0.0f, -1.0f ),	Float2_Set( 1.0f, 0.0f )	);
+	vertices[19] = BSP::Vertex( Float3_Set( -HL, -HH, -HD ),	packF4u( -1.0f, 0.0f, 0.0f ), 	packF4u( 0.0f, 0.0f, -1.0f ),	Float2_Set( 1.0f, 1.0f )	);
+
+	// Fill in the right face vertex data.
+	vertices[20] = BSP::Vertex( Float3_Set(  HL, -HH, -HD ),	packF4u( 1.0f, 0.0f, 0.0f ), 	packF4u( 0.0f, 0.0f, 1.0f ), 	Float2_Set( 0.0f, 1.0f )	);
+	vertices[21] = BSP::Vertex( Float3_Set(  HL,  HH, -HD ),	packF4u( 1.0f, 0.0f, 0.0f ), 	packF4u( 0.0f, 0.0f, 1.0f ), 	Float2_Set( 0.0f, 0.0f )	);
+	vertices[22] = BSP::Vertex( Float3_Set(  HL,  HH,  HD ),	packF4u( 1.0f, 0.0f, 0.0f ), 	packF4u( 0.0f, 0.0f, 1.0f ), 	Float2_Set( 1.0f, 0.0f )	);
+	vertices[23] = BSP::Vertex( Float3_Set(  HL, -HH,  HD ),	packF4u( 1.0f, 0.0f, 0.0f ), 	packF4u( 0.0f, 0.0f, 1.0f ), 	Float2_Set( 1.0f, 1.0f )	);
+
+	//// Scale the box.
+	//{
+	//	Float4x4 scaleMatrix = Matrix_Scaling( length, height, depth );
+	//	Float4x4 scaleMatrixIT = Matrix_Transpose( Matrix_Inverse( scaleMatrix ) );
+
+	//	for( UINT i = 0; i < NUM_VERTICES; ++i )
+	//	{
+	//		scaleMatrixIT.TransformNormal( vertices[i].Normal );
+	//		scaleMatrixIT.TransformNormal( vertices[i].Tangent );
+	//	}
+	//}
+
+	// Create the index buffer.
+
+	indices.SetNum( NUM_INDICES );
+
+	// Fill in the front face index data
+	indices[0] = 0; indices[1] = 1; indices[2] = 2;
+	indices[3] = 0; indices[4] = 2; indices[5] = 3;
+
+	// Fill in the back face index data
+	indices[6] = 4; indices[7]  = 5; indices[8]  = 6;
+	indices[9] = 4; indices[10] = 6; indices[11] = 7;
+
+	// Fill in the top face index data
+	indices[12] = 8; indices[13] =  9; indices[14] = 10;
+	indices[15] = 8; indices[16] = 10; indices[17] = 11;
+
+	// Fill in the bottom face index data
+	indices[18] = 12; indices[19] = 13; indices[20] = 14;
+	indices[21] = 12; indices[22] = 14; indices[23] = 15;
+
+	// Fill in the left face index data
+	indices[24] = 16; indices[25] = 17; indices[26] = 18;
+	indices[27] = 16; indices[28] = 18; indices[29] = 19;
+
+	// Fill in the right face index data
+	indices[30] = 20; indices[31] = 21; indices[32] = 22;
+	indices[33] = 20; indices[34] = 22; indices[35] = 23;
 }
 
 ERet MyEntryPoint()
@@ -41,13 +128,15 @@ ERet MyEntryPoint()
 
 	BSP::Vertex::init();
 
-	calcTangents( g_planeVertices, BX_COUNTOF(g_planeVertices), BSP::Vertex::ms_decl,
+	calcTangents(
+		g_planeVertices, BX_COUNTOF(g_planeVertices), BSP::Vertex::ms_decl,
 		g_planeIndices, BX_COUNTOF(g_planeIndices) );
 
 
 
 	BSP::Tree	operand;
 	{
+#if 0
 		BSP::Vertex cubeVertices[BX_COUNTOF(s_cubeVertices)];
 		for( int iVertex = 0; iVertex < BX_COUNTOF(s_cubeVertices); iVertex++ )
 		{
@@ -63,6 +152,15 @@ ERet MyEntryPoint()
 		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
 			cubeVertices, BX_COUNTOF(cubeVertices), s_cubeIndices, BX_COUNTOF(s_cubeIndices)
 		);
+#else
+		TArray< BSP::Vertex >	cubeVertices;
+		TArray< UINT16 >		cubeIndices;
+		MakeBoxMesh( 1.0f, 1.0f, 1.0f, cubeVertices, cubeIndices );
+
+		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
+			cubeVertices.ToPtr(), cubeVertices.Num(), cubeIndices.ToPtr(), cubeIndices.Num()
+		);
+#endif
 		operand.Build( &enumerateMeshVertices );
 
 		BSP::Debug::PrintTree(operand);
@@ -102,6 +200,10 @@ ERet MyEntryPoint()
 
 	bgfx::updateDynamicVertexBuffer( g_dynamicVB, 0, vertexMemory );
 	bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );
+
+
+	int fireRate = 1; // shots per second
+	int64_t lastTimeShot = 0;
 
 
 	// Imgui.
@@ -232,17 +334,26 @@ ERet MyEntryPoint()
 
 		if( !!mouseState.m_buttons[entry::MouseButton::Left] )
 		{
-			Float3 rayPos, lookAt, rayDir;
-			cameraGetPosition((float*)&rayPos);
-			cameraGetAt((float*)&lookAt);
-			rayDir = Float3_Normalized(lookAt - rayPos);
+			const int64_t timeElapsed = now - lastTimeShot;
+			double secondsElapsed = double(timeElapsed)/freq;
+			DBGOUT("secondsElapsed: %f", secondsElapsed);
+			if( secondsElapsed > (1.0f/fireRate) )
+			{
+				lastTimeShot = now;
 
-			tree.CastRay( rayPos, rayDir, lastHit );
-			if(lastHit.hitAnything) {
-				LogStream(LL_Info) << "Hit pos: " << lastHit.position;
-				operand.Translate(lastHit.position);
-				//tree.Subtract(operand);
-			}
+				Float3 rayPos, lookAt, rayDir;
+				cameraGetPosition((float*)&rayPos);
+				cameraGetAt((float*)&lookAt);
+				rayDir = Float3_Normalized(lookAt - rayPos);
+
+				tree.CastRay( rayPos, rayDir, lastHit );
+				if(lastHit.hitAnything) {
+//					LogStream(LL_Info) << "Hit pos: " << lastHit.position;
+					temporary.CopyFrom( operand );
+					temporary.Translate( lastHit.position );
+					//tree.Subtract(operand);
+				}
+			}		
 		}
 	}
 

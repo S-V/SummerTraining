@@ -733,6 +733,12 @@ inline Float3 UnpackNormal( const UByte4& v ) {
 
 inline UByte4 PackNormal( const Float3& n ) { return PackNormal(n.x, n.y, n.z); }
 
+// [-32768..32767] => [-1..+1]
+inline float Short_To_Normal( INT16 x )
+{
+	return (x == -32768) ? -1.f : ((float)x * (1.0f/32767.0f));
+}
+
 mxSWIPED("Doom3 BFG edition");
 
 // GPU half-float bit patterns
