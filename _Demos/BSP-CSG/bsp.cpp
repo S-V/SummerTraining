@@ -70,7 +70,7 @@ mxBEGIN_REFLECTION(Node)
 	mxMEMBER_FIELD( plane ),
 	mxMEMBER_FIELD( front ),
 	mxMEMBER_FIELD( back ),
-	mxMEMBER_FIELD( polys ),
+	mxMEMBER_FIELD( faces ),
 mxEND_REFLECTION;
 
 mxDEFINE_CLASS(Poly);
@@ -701,8 +701,8 @@ static UINT32 PartitionPolygons(
 			Vertex	buffer1[64];
 			Vertex	buffer2[64];
 
-			Poly		frontPoly;
-			Poly		backPoly;
+			Poly	frontPoly;
+			Poly	backPoly;
 			frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
 			backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
 
@@ -733,8 +733,8 @@ static UINT32 PartitionPolygons(
 			else
 			{
 				mxASSERT( side == PLANESIDE_ON );
-				polygon.next = splittingNode.polys;
-				splittingNode.polys = iPoly;
+				polygon.next = splittingNode.faces;
+				splittingNode.faces = iPoly;
 				coplanar++;
 			}
 		}
@@ -1205,28 +1205,254 @@ int RayIntersect(BSPNode *node, Point p, Vector d, float tmin, float tmax, float
 	return 0;
 }
 #endif
+mxTODO("merge with PartitionPolygons");
+static EPlaneSide PartitionPolygons2(
+								 const Vector4& partitioner,
+								 Tree & tree,
+								 const BspPolyID polygons,
+								 BspPolyID *frontPolys,
+								 BspPolyID *backPolys,
+								 BspPolyID *coplanar,
+								 const float epsilon = 0.13f
+								 )
+{
+	int front = 0, back = 0, split = 0, coplanars = 0, total = 0;
+
+	BspPolyID iPoly = polygons;
+	while( iPoly != BSP_NONE )
+	{
+		Poly &	polygon = tree.m_polys[ iPoly ];
+		const BspPolyID iNextPoly = polygon.next;
+
+		Vertex	buffer1[64];
+		Vertex	buffer2[64];
+
+		Poly	frontPoly;
+		Poly	backPoly;
+		frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
+		backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+
+		const EPlaneSide side = SplitConvexPolygonByPlane( polygon, frontPoly, backPoly, partitioner, epsilon );
+
+		if( side == PLANESIDE_CROSS )
+		{
+			mxASSERT( frontPoly.vertices.Num() && backPoly.vertices.Num() );
+			AddPolygon( frontPoly, tree, frontPolys );
+			AddPolygon( backPoly, tree, backPolys );
+			split++;
+		}
+		else if( side == PLANESIDE_FRONT )
+		{
+			mxASSERT( frontPoly.vertices.Num() );
+			polygon.next = *frontPolys;
+			*frontPolys = iPoly;
+			front++;
+		}
+		else if( side == PLANESIDE_BACK )
+		{
+			mxASSERT( backPoly.vertices.Num() );
+			polygon.next = *backPolys;
+			*backPolys = iPoly;
+			back++;
+		}
+		else
+		{
+			mxASSERT( side == PLANESIDE_ON );
+			polygon.next = *coplanar;
+			*coplanar = iPoly;
+			coplanars++;
+		}
+
+		// continue
+		iPoly = iNextPoly;
+		total++;
+	}
+
+	if ( coplanars == total ) {
+		return PLANESIDE_ON;
+	}
+	// if nothing at the front of the clipping plane
+	if ( front == 0 ) {
+		return PLANESIDE_BACK;
+	}
+	// if nothing at the back of the clipping plane
+	if ( back == 0 ) {
+		//front = polygon;
+		return PLANESIDE_FRONT;
+	}
+	return PLANESIDE_CROSS;
+}
+#if 0
 
 static EPlaneSide PartitionNodeWithPlane(
-	Tree & tree, int node,
-	const Vector4& plane,
+	const Vector4& partitioner,
+	Tree & tree, int nodeId,
 	int *front, int *back
 	)
 {
-	UNDONE;
-	return PLANESIDE_CROSS;
+	//// if this is a leaf
+	//if( nodeId < 0 ) {
+	//	*front = nodeId;
+	//	*back = nodeId;
+	//	return PLANESIDE_CROSS;
+	//}
+	mxASSERT( nodeId >= 0 );
+
+	const Node& node = tree.m_nodes[ nodeId ];
+	const Vector4& nodePlane = tree.m_planes[ node.plane ];
+
+	// partition the operand
+	BspPolyID	frontPolys = BSP_NONE;
+	BspPolyID	backPolys = BSP_NONE;
+	BspPolyID	coplanar = BSP_NONE;
+	const EPlaneSide side = PartitionPolygons2( partitioner, tree, node.faces, &frontPolys, &backPolys, &coplanar );
+
+
+	const float dot = Plane_GetNormal( partitioner ) * Plane_GetNormal( nodePlane );
+
+	// Variable to hold if the normal vectors are facing the same direction.
+	bool  colinearPlanes = ( dot > 0.0f );
+
+	// If planes are coplanar.
+	if ( side == PLANESIDE_ON )
+	{
+		// case "On"
+		if ( colinearPlanes )
+		{
+			// "parallel-on"
+			*front = node.front;
+			*back = node.back;
+		}
+		else
+		{
+			// "antiparallel-on"
+			*front = node.back;
+			*back = node.front;
+		}
+
+	}//End of case if coplanar
+
+	else if ( side == PLANESIDE_FRONT )
+	{
+		mxASSERT2( frontPolys, "All the polygons of the node must be in front of the splitting splitPlane" );
+		mxASSERT2( coplanar == NULL, "Coplanar polys are not supported!" );
+
+		node->Faces = frontPolys;
+
+		if ( colinearPlanes )
+		{
+			// Only the back child of the node needs to be partitioned.
+			Node *  partitioned_back_F = NULL;
+			Node *  partitioned_back_B = NULL;
+
+			PartitionNodeWithPlane( partitioner, tree, node.back, partitioned_back_F, partitioned_back_B );
+
+			*front = node;
+			*front->SetBack( partitioned_back_F );
+			// node->frontChild remains intact...
+
+			*back = partitioned_back_B;
+		}
+		else
+		{
+			// Only the front child of the node has to be partitioned.
+			Node *  partitioned_front_F = NULL;
+			Node *  partitioned_front_B = NULL;
+
+			PartitionNodeWithPlane( partitioner, tree, node.front, partitioned_front_F, partitioned_front_B );
+
+			*front = node;
+			*front->SetFront( partitioned_front_F );
+			// node->backChild remains intact...
+
+			*back = partitioned_front_B;
+		}
+		return;
+	}
+
+	else if ( side == PLANESIDE_BACK )
+	{
+		mxASSERT2( backPolys, "All polygons of the node must be behind the splitting splitPlane" );
+		mxASSERT2( coplanar == NULL, "Coplanar polys are not supported!" );
+
+		node->Faces = backPolys;
+
+		if ( colinearPlanes )
+		{
+			// Only the front child of the node needs to be partitioned.
+			Node *  partitioned_front_F = NULL;
+			Node *  partitioned_front_B = NULL;
+
+			PartitionNodeWithPlane( partitioner, tree, node.front, partitioned_front_F, partitioned_front_B );
+
+			*front = partitioned_front_F;
+
+			*back = node;
+			*back->SetFront( partitioned_front_B );
+			// node->backChild remains intact...
+		}
+		else
+		{
+			// Only the back child of the node is partitioned.
+			Node *  partitioned_back_F = NULL;
+			Node *  partitioned_back_B = NULL;
+
+			PartitionNodeWithPlane( partitioner, tree, node.back, partitioned_back_F, partitioned_back_B );
+
+			*front = partitioned_back_F;
+
+			*back = node;
+			*back->SetBack( partitioned_back_B );
+			// node->frontChild remains intact...
+		}
+	}//End of case "No front polys"
+
+	else
+	{
+		// Split both children of the node.
+
+		// Create two new nodes resulting from the partitioning.
+		*front = NewNode( tree );
+		*back = NewNode( tree );
+
+		tree.m_nodes[ *front ].plane = nodePlane;
+		tree.m_nodes[ *front ].faces = frontPolys;
+
+		tree.m_nodes[ *back ].plane = nodePlane;
+		tree.m_nodes[ *back ].faces = backPolys;
+
+
+		int partitioned_front_F = BSP_NONE;
+		int	partitioned_front_B = BSP_NONE;
+
+		int	partitioned_back_F = BSP_NONE;
+		int	partitioned_back_B = BSP_NONE;
+
+		PartitionNodeWithPlane( partitioner, tree, tree.m_nodes[ nodeId ].front, &partitioned_front_F, &partitioned_front_B );
+		PartitionNodeWithPlane( partitioner, tree, tree.m_nodes[ nodeId ].back, &partitioned_back_F, &partitioned_back_B );
+
+		tree.m_nodes[ *front ].front = partitioned_front_F;
+		tree.m_nodes[ *front ].back = partitioned_back_F;
+
+		tree.m_nodes[ *back ].front = partitioned_front_B;
+		tree.m_nodes[ *back ].back = partitioned_back_B;
+	}
+
+	return side;
 }
 
 // computes boolean A - B
 static void MergeSubtract( Tree & treeA, BspNodeID * nodeA, Tree & treeB, BspNodeID nodeB )
 {
-	if( nodeA >= 0 )
+	if( *nodeA >= 0 )
 	{
+		// this is an internal node
 		Node& node = treeA.m_nodes[ *nodeA ];
 		const Vector4& plane = treeA.m_planes[ node.plane ];
 
 		int nodeB_front = -1;
 		int nodeB_back = -1;
-		PartitionNodeWithPlane( treeB, nodeB, plane, &nodeB_front, &nodeB_back );
+		PartitionNodeWithPlane( plane, treeB, nodeB, &nodeB_front, &nodeB_back );
 
 		MergeSubtract( treeA, &node.front, treeB, nodeB_front );
 		MergeSubtract( treeA, &node.back, treeB, nodeB_back );
@@ -1238,13 +1464,15 @@ static void MergeSubtract( Tree & treeA, BspNodeID * nodeA, Tree & treeB, BspNod
 		{
 			*nodeA = nodeB;
 		}
+		// empty space - do nothing
 	}
 }
 
 void Tree::Subtract( const Tree& other )
 {
-	//MergeSubtract( *this, 0, other, 0 );
+	MergeSubtract( *this, 0, other, 0 );
 }
+#endif
 
 void Tree::Negate()
 {

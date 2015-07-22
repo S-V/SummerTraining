@@ -68,6 +68,8 @@ ERet MyEntryPoint()
 		BSP::Debug::PrintTree(operand);
 	}
 
+	BSP::Tree	temporary;
+
 
 	BSP::Tree	tree;
 	{
@@ -238,6 +240,8 @@ ERet MyEntryPoint()
 			tree.CastRay( rayPos, rayDir, lastHit );
 			if(lastHit.hitAnything) {
 				LogStream(LL_Info) << "Hit pos: " << lastHit.position;
+				operand.Translate(lastHit.position);
+				//tree.Subtract(operand);
 			}
 		}
 	}

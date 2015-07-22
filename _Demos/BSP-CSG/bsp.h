@@ -123,7 +123,7 @@ struct Node : public CStruct
 	UINT16		plane;	//«2 Hyperplane of the node (index into array of planes).
 	BspNodeID	front;	//«2 Index of the right child (positive subspace, in front of plane).
 	BspNodeID	back;	//«2 Index of the left child (negative subspace, behind the plane).
-	BspPolyID	polys;	//«2 linked list of polygons lying on this node's plane
+	BspPolyID	faces;	//«2 linked list of polygons lying on this node's plane
 public:
 	mxDECLARE_CLASS(Node,CStruct);
 	mxDECLARE_REFLECTION;
