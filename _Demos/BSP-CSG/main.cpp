@@ -227,6 +227,20 @@ ERet MyEntryPoint()
 	TArray< UINT16 >		rawIndices;
 
 
+
+	{
+		Subtract(
+			Float3_Set(0,-1,0),
+			worldTree,
+			operand,
+			temporary,
+			rawVertices, rawIndices
+		);
+		DBGOUT("\nWorld tree after CSG:\n");
+		BSP::Debug::PrintTree(worldTree);
+	}
+
+
 	// Imgui.
 	imguiCreate();
 

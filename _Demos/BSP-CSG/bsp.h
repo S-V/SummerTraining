@@ -114,7 +114,8 @@ public:
 		for( int i = 0; i < numTriangles; i++ )
 		{
 			const INDEX* tri = m_indices + i*3;
-			callback->ProcessTriangle( m_vertices[tri[0]], m_vertices[tri[1]], m_vertices[tri[2]] );
+			//callback->ProcessTriangle( m_vertices[tri[0]], m_vertices[tri[1]], m_vertices[tri[2]] );
+			callback->ProcessTriangle( m_vertices[tri[2]], m_vertices[tri[1]], m_vertices[tri[0]] );
 		}
 	}
 };
@@ -168,9 +169,9 @@ public:
 };
 struct Face : public CStruct
 {
-	TArray< Vertex >	vertices;
-	FaceID				next;
-	Vertex				buffer[8];	//«256 small embedded storage to avoid memory allocations
+	TArray< Vertex >	vertices;	//«8/12
+	FaceID				next;		//«2
+	Vertex				buffer[7];	//«224 small embedded storage to avoid memory allocations
 public:
 	mxDECLARE_CLASS(Face,CStruct);
 	mxDECLARE_REFLECTION;

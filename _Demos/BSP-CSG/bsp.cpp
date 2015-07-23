@@ -747,7 +747,7 @@ static EPlaneSide ClassifyFaces( int total, int sides[4] )
 
 // returns index of new node
 //
-static NodeID BuildTree_R( Tree & tree, const UINT16 polygons, BspStats &stats )
+static NodeID BuildTree_R( Tree & tree, const FaceID polygons, BspStats &stats )
 {
 	mxASSERT( polygons != NIL_INDEX );
 
@@ -890,12 +890,12 @@ float Tree::DistanceToPoint( const Float3& point, float epsilon ) const
 		const Vector4& plane = m_planes[ node.plane ];
 		distance = Plane_PointDistance( plane, point );
 		const int nearIndex = (distance >= 0.f);	// child of Node for half-space containing the origin of Ray: 1 - front, 0 - back
-		const int sides[2] = { (INT16)node.back, (INT16)node.front };
+		const int sides[2] = { node.back, node.front };
 		// Go down the appropriate side
 		if( distance > +epsilon ) {
-			nodeIndex = (INT16)node.front;
+			nodeIndex = node.front;
 		} else if( distance < -epsilon ) {
-			nodeIndex = (INT16)node.back;
+			nodeIndex = node.back;
 		} else {
 			nodeIndex = sides[ nearIndex ];
 		}
@@ -1046,10 +1046,10 @@ float Tree::CastRay( const Float3& start, const Float3& direction ) const
 		const float d2 = Plane_PointDistance( plane, end );
 		// see which sides we need to consider
 		if( d1 >= +epsilon && d2 >= +epsilon ) {
-			nodeIndex = (INT16)node.front;
+			nodeIndex = node.front;
 		}
 		else if( d1 < -epsilon && d2 < -epsilon ) {
-			nodeIndex = (INT16)node.back;
+			nodeIndex = node.back;
 		}
 		else {
 			// Straddling
@@ -1129,10 +1129,10 @@ bool Intersect_R( const Tree& tree, int nodeID, const Float3& start, const Float
 	const float d2 = Plane_PointDistance( plane, end );
 	// see which sides we need to consider
 	if( d1 >= +epsilon && d2 >= +epsilon ) {
-		nodeID = (INT16)node.front;
+		nodeID = node.front;
 	}
 	else if( d1 < -epsilon && d2 < -epsilon ) {
-		nodeID = (INT16)node.back;
+		nodeID = node.back;
 	}
 	else {
 		// Straddling
@@ -1167,10 +1167,10 @@ bool Intersect_R( const Tree& tree, int nodeID, const Float3& start, const Float
 		t = smallest( t, fraction );
 
 		const Float3 mid = start + (end - start) * fraction;
-		if(Intersect_R( tree, (INT16)node.front, start, mid, t )) {
+		if(Intersect_R( tree, node.front, start, mid, t )) {
 			return true;
 		}
-		if(Intersect_R( tree, (INT16)node.back, mid, end, t )) {
+		if(Intersect_R( tree, node.back, mid, end, t )) {
 			return true;
 		}
 		return false;
@@ -1242,7 +1242,8 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 	}
 
 	const Node& node = m_nodes[ nodeId ];
-	const Vector4& nodePlane = m_planes[ node.plane ];
+	const UINT16 iPlaneIndex = node.plane;
+	const Vector4& nodePlane = m_planes[ iPlaneIndex ];
 
 	// partition the operand
 	FaceID	frontFaces = NIL_INDEX;
@@ -1361,10 +1362,10 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 		*front = NewNode( *this );
 		*back = NewNode( *this );
 
-		m_nodes[ *front ].plane = node.plane;
+		m_nodes[ *front ].plane = iPlaneIndex;
 		m_nodes[ *front ].faces = frontFaces;
 
-		m_nodes[ *back ].plane = node.plane;
+		m_nodes[ *back ].plane = iPlaneIndex;
 		m_nodes[ *back ].faces = backFaces;
 
 
@@ -1382,6 +1383,9 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 
 		m_nodes[ *back ].front = partitioned_front_B;
 		m_nodes[ *back ].back = partitioned_back_B;
+
+		mxASSERT(m_planes.IsValidIndex(m_nodes[ *front ].plane));
+		mxASSERT(m_planes.IsValidIndex(m_nodes[ *back ].plane));
 	}
 
 	return side;
@@ -1421,10 +1425,11 @@ static int AppendTree( Tree & treeA, const Tree& treeB )
 #endif
 
 // treeA <- (treeB, nodeB)
-static int CopySubTree( Tree & treeA, const Tree& treeB, int iNodeB )
+static NodeID CopySubTree( Tree & treeA, const Tree& treeB, NodeID iNodeB )
 {
-	int subtreeId = 0;
-	if( iNodeB >= 0 )
+	DBGOUT("CopySubTree: %d",GET_PAYLOAD(iNodeB));
+	NodeID subtreeId = 0;
+	if( IS_INTERNAL( iNodeB ) )
 	{
 		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
 		const Vector4& rPlaneB = treeB.m_planes[ rNodeB.plane ];
@@ -1432,7 +1437,7 @@ static int CopySubTree( Tree & treeA, const Tree& treeB, int iNodeB )
 		const int iNewPlaneA = treeA.m_planes.Num();
 		treeA.m_planes.Add( rPlaneB );
 
-		const int iNewNodeA = NewNode( treeA );
+		const NodeID iNewNodeA = NewNode( treeA );
 		Node &rNodeA = treeA.m_nodes[ iNewNodeA ];
 
 		rNodeA.plane = iNewPlaneA;
@@ -1444,7 +1449,7 @@ static int CopySubTree( Tree & treeA, const Tree& treeB, int iNodeB )
 		{
 			const Face& rFaceB = treeB.m_faces[ iFaceB ];
 
-			const int iNewFaceA = treeA.m_faces.Num();
+			const FaceID iNewFaceA = treeA.m_faces.Num();
 			treeA.m_faces.Add( rFaceB );
 
 			Face &rFaceA = treeA.m_faces[ iNewFaceA ];
@@ -1454,8 +1459,8 @@ static int CopySubTree( Tree & treeA, const Tree& treeB, int iNodeB )
 			iFaceB = rFaceB.next;
 		}
 
-		treeA.m_nodes[ iNewNodeA ].front = CopySubTree( treeA, treeB, (INT16)rNodeB.front );
-		treeA.m_nodes[ iNewNodeA ].back = CopySubTree( treeA, treeB, (INT16)rNodeB.back );
+		treeA.m_nodes[ iNewNodeA ].front = CopySubTree( treeA, treeB, rNodeB.front );
+		treeA.m_nodes[ iNewNodeA ].back = CopySubTree( treeA, treeB, rNodeB.back );
 	}
 	else
 	{
@@ -1467,7 +1472,7 @@ static int CopySubTree( Tree & treeA, const Tree& treeB, int iNodeB )
 // computes boolean A - B
 static void MergeSubtract( Tree & treeA, NodeID * iNodeA, Tree & treeB, const NodeID iNodeB )
 {
-	if( !IS_LEAF( *iNodeA ) )
+	if( IS_INTERNAL( *iNodeA ) )
 	{
 		// this is an internal node
 		Node& node = treeA.m_nodes[ *iNodeA ];
@@ -1477,15 +1482,15 @@ static void MergeSubtract( Tree & treeA, NodeID * iNodeA, Tree & treeB, const No
 		NodeID nodeB_back = NIL_INDEX;
 		treeB.PartitionNodeWithPlane( plane, iNodeB, &nodeB_front, &nodeB_back );
 
-		MergeSubtract( treeA, &node.front, treeB, (INT16)nodeB_front );
-		MergeSubtract( treeA, &node.back, treeB, (INT16)nodeB_back );
+		MergeSubtract( treeA, &node.front, treeB, nodeB_front );
+		MergeSubtract( treeA, &node.back, treeB, nodeB_back );
 	}
 	else
 	{
 		// this is a leaf node
 		if( IS_SOLID_LEAF( *iNodeA ) )
 		{
-//			*iNodeA = CopySubTree( treeA, treeB, iNodeB );
+			*iNodeA = CopySubTree( treeA, treeB, iNodeB );
 		}
 		// empty space - do nothing
 	}
@@ -1550,7 +1555,7 @@ void Tree::Translate( const Float3& T )
 }
 
 static void GenerateMesh_R(
-						   const Tree& tree, const int nodeId,
+						   const Tree& tree, const NodeID nodeId,
 						   TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices
 						   )
 {
@@ -1560,8 +1565,8 @@ static void GenerateMesh_R(
 		const Vector4& plane = tree.m_planes[ node.plane ];
 
 		// TODO: don't emit this node if the data in this node hasn't been changed.
-		GenerateMesh_R( tree, (INT16)node.front, vertices, indices );
-		GenerateMesh_R( tree, (INT16)node.back, vertices, indices );
+		GenerateMesh_R( tree, node.front, vertices, indices );
+		GenerateMesh_R( tree, node.back, vertices, indices );
 
 		// Loop through all faces of this node.
 		FaceID iFaceId = node.faces;
