@@ -524,7 +524,7 @@ static
 FaceID FindBestSplitterIndex( const Tree& tree, const FaceID polygons,
 							 const SplittingCriteria& options = SplittingCriteria() )
 {
-	mxASSERT(polygons != BSP_NONE);
+	mxASSERT(polygons != NIL_INDEX);
 
 	INT		numFrontFaces = 0;
 	INT		numBackFaces = 0;
@@ -536,7 +536,7 @@ FaceID FindBestSplitterIndex( const Tree& tree, const FaceID polygons,
 
 	FaceID iPolyA = polygons;
 
-	while( iPolyA != BSP_NONE )
+	while( iPolyA != NIL_INDEX )
 	{
 		// select potential splitter
 		const Face& polygonA = tree.m_faces[ iPolyA ];
@@ -546,7 +546,7 @@ FaceID FindBestSplitterIndex( const Tree& tree, const FaceID polygons,
 
 		// test other polygons against the potential splitter
 		FaceID iPolyB = polygons;
-		while( iPolyB != BSP_NONE )
+		while( iPolyB != NIL_INDEX )
 		{
 			const Face& polygonB = tree.m_faces[ iPolyB ];
 			if( iPolyA != iPolyB )
@@ -592,7 +592,7 @@ FaceID FindBestSplitterIndex( const Tree& tree, const FaceID polygons,
 		iPolyA = polygonA.next;
 	}//for all potential splitters
 
-	mxASSERT(bestSplitter != BSP_NONE);
+	mxASSERT(bestSplitter != NIL_INDEX);
 	return bestSplitter;
 }
 
@@ -630,6 +630,7 @@ static UINT32 GetPlaneIndex(
 	return newPlaneIndex;
 }
 
+// Creates a new internal node.
 static inline NodeID NewNode( Tree & tree )
 {
 	const UINT32 newNodeIndex = tree.m_nodes.Num();
@@ -658,7 +659,7 @@ static FaceID AddPolygon( const Face& poly, Tree & tree, FaceID * head )
 static int CalculatePolygonCount( const Tree& tree, FaceID iPoly )
 {
 	int result = 0;
-	while( iPoly != BSP_NONE )
+	while( iPoly != NIL_INDEX )
 	{
 		const Face&	polygon = tree.m_faces[ iPoly ];
 		result++;
@@ -680,7 +681,7 @@ int Tree::PartitionPolygons(
 	int totalFaces = 0;	// the total number of all considered polygons
 
 	FaceID iPoly = polygons;
-	while( iPoly != BSP_NONE )
+	while( iPoly != NIL_INDEX )
 	{
 		Face &	polygon = m_faces[ iPoly ];
 		const FaceID iNextPoly = polygon.next;
@@ -748,7 +749,7 @@ static EPlaneSide ClassifyFaces( int total, int sides[4] )
 //
 static NodeID BuildTree_R( Tree & tree, const UINT16 polygons, BspStats &stats )
 {
-	mxASSERT( polygons != BSP_NONE );
+	mxASSERT( polygons != NIL_INDEX );
 
 	// allocate a new internal node
 	const NodeID nodeIndex = NewNode( tree );
@@ -764,10 +765,10 @@ static NodeID BuildTree_R( Tree & tree, const UINT16 polygons, BspStats &stats )
 	const Vector4 splittingPlane = PlaneFromPolygon( tree.m_faces[ bestSplitter ] );
 
 	// partition the list
-	FaceID	frontFaces = BSP_NONE;
-	FaceID	backFaces = BSP_NONE;
-	FaceID	coplanar = BSP_NONE;
-	int			faceCounts[4] = {0};
+	FaceID	frontFaces = NIL_INDEX;
+	FaceID	backFaces = NIL_INDEX;
+	FaceID	coplanar = NIL_INDEX;
+	int		faceCounts[4] = {0};
 
 	tree.PartitionPolygons(
 		splittingPlane, polygons, &frontFaces, &backFaces, &coplanar, faceCounts
@@ -779,25 +780,29 @@ static NodeID BuildTree_R( Tree & tree, const UINT16 polygons, BspStats &stats )
 	tree.m_nodes[ nodeIndex ].faces = coplanar;
 
 	// recursively process children
-	if( frontFaces != BSP_NONE )
+	if( frontFaces != NIL_INDEX )
 	{
 		tree.m_nodes[ nodeIndex ].front = BuildTree_R( tree, frontFaces, stats );
 	}
 	else
 	{
-		tree.m_nodes[ nodeIndex ].front = BSP_EMPTY_LEAF;
+		tree.m_nodes[ nodeIndex ].front = MAKE_LEAF( EMPTY_LEAF );
 		stats.m_numEmptyLeaves++;
 	}
 
-	if( backFaces != BSP_NONE )
+	if( backFaces != NIL_INDEX )
 	{
 		tree.m_nodes[ nodeIndex ].back = BuildTree_R( tree, backFaces, stats );
 	}
 	else
 	{
-		tree.m_nodes[ nodeIndex ].back = BSP_SOLID_LEAF;
+		tree.m_nodes[ nodeIndex ].back = MAKE_LEAF( SOLID_LEAF );
 		stats.m_numSolidLeaves++;
 	}
+
+	Node& fsfs = tree.m_nodes[ nodeIndex ];
+	NODE_TYPE frontT = GET_TYPE(fsfs.front);
+	NODE_TYPE backT = GET_TYPE(fsfs.back);
 
 	return nodeIndex;
 }
@@ -821,7 +826,7 @@ ERet Tree::Build( ATriangleMeshInterface* triangleMesh )
 			v1 = a;
 			v2 = b;
 			v3 = c;
-			newPoly.next = BSP_NONE;
+			newPoly.next = NIL_INDEX;
 		}
 	};
 
@@ -859,20 +864,20 @@ ERet Tree::Build( ATriangleMeshInterface* triangleMesh )
 
 bool Tree::PointInSolid( const Float3& point, float epsilon ) const
 {
-	int nodeIndex = 0;
+	NodeID nodeIndex = 0;
 	// If < 0, we are in a leaf node
-	while( nodeIndex >= 0 )
+	while( !IS_LEAF( nodeIndex ) )
 	{
 		// Find which side of the node we are on
 		const Node& node = m_nodes[ nodeIndex ];
 		const Vector4& plane = m_planes[ node.plane ];
 		const EPlaneSide side = CalculatePlaneSide( plane, point, epsilon );
 		// Go down the appropriate side
-		nodeIndex = (side == PLANESIDE_FRONT) ? (INT16)node.front : (INT16)node.back;
+		nodeIndex = (side == PLANESIDE_FRONT) ? node.front : node.back;
 	}
-	return nodeIndex == BSP_SOLID_LEAF;
+	return IS_SOLID_LEAF( nodeIndex );
 }
-
+#if 0
 float Tree::DistanceToPoint( const Float3& point, float epsilon ) const
 {
 	int nodeIndex = 0;
@@ -898,7 +903,7 @@ float Tree::DistanceToPoint( const Float3& point, float epsilon ) const
 	// return the minimum (closest) distance
 	return distance;
 }
-
+#endif
 bool PlaneLineIntersection( const Float4& plane, const Float3& start, const Float3& end, float *fraction )
 {
 	const float d1 = Plane_PointDistance( plane, start );
@@ -958,19 +963,19 @@ size_t Tree::BytesAllocated() const
 
 int CastRay_R(
 			 const Float3& start, const Float3& direction,
-			 const Tree& tree, const int nodeIndex,
+			 const Tree& tree, const NodeID nodeIndex,
 			 float tmin, float tmax,
 			 float *thit
 			 )
 {
-	if( nodeIndex >= 0 )
+	if( !IS_LEAF( nodeIndex ) )
 	{
 		const Node& node = tree.m_nodes[ nodeIndex ];
 		const Vector4& plane = tree.m_planes[ node.plane ];
 		const float distance = Plane_PointDistance( plane, start );
 		const float denom = Float3_Dot( Plane_GetNormal(plane), direction );
 		const int nearIndex = (distance >= 0.f);	// child of Node for half-space containing the origin of Ray: 1 - front, 0 - back
-		const int sides[2] = { (INT16)node.back, (INT16)node.front };
+		const NodeID sides[2] = { node.back, node.front };
 		int firstSide = nearIndex;
 		// If denom is zero, ray runs parallel to plane. In this case,
 		// just fall through to visit the near side (the one 'start' lies on)
@@ -997,7 +1002,7 @@ int CastRay_R(
 	else
 	{
 		// Now at a leaf. If it is solid, there's a hit at time tmin, so exit
-		if( nodeIndex == BSP_SOLID_LEAF ) {
+		if( IS_SOLID_LEAF( nodeIndex ) ) {
 			*thit = tmin;
 			return 1;
 		}
@@ -1224,13 +1229,13 @@ int RayIntersect(BSPNode *node, Point p, Vector d, float tmin, float tmax, float
 
 EPlaneSide Tree::PartitionNodeWithPlane(
 	const Vector4& partitioner,
-	int nodeId,
-	int *front,
-	int *back
+	NodeID nodeId,
+	NodeID *front,
+	NodeID *back
 	)
 {
 	//mxASSERT( nodeId >= 0 );
-	if( nodeId < 0 ) {
+	if( IS_LEAF( nodeId ) ) {
 		*front = nodeId;
 		*back = nodeId;
 		return PLANESIDE_CROSS;
@@ -1240,9 +1245,9 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 	const Vector4& nodePlane = m_planes[ node.plane ];
 
 	// partition the operand
-	FaceID	frontFaces = BSP_NONE;
-	FaceID	backFaces = BSP_NONE;
-	FaceID	coplanar = BSP_NONE;
+	FaceID	frontFaces = NIL_INDEX;
+	FaceID	backFaces = NIL_INDEX;
+	FaceID	coplanar = NIL_INDEX;
 	int		faceCounts[4] = {0};
 
 	const int totalCount = PartitionPolygons( partitioner, node.faces, &frontFaces, &backFaces, &coplanar, faceCounts );
@@ -1363,14 +1368,14 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 		m_nodes[ *back ].faces = backFaces;
 
 
-		int partitioned_front_F = BSP_NONE;
-		int	partitioned_front_B = BSP_NONE;
+		NodeID partitioned_front_F = NIL_INDEX;
+		NodeID	partitioned_front_B = NIL_INDEX;
 
-		int	partitioned_back_F = BSP_NONE;
-		int	partitioned_back_B = BSP_NONE;
+		NodeID	partitioned_back_F = NIL_INDEX;
+		NodeID	partitioned_back_B = NIL_INDEX;
 
-		PartitionNodeWithPlane( partitioner, (INT16)m_nodes[ nodeId ].front, &partitioned_front_F, &partitioned_front_B );
-		PartitionNodeWithPlane( partitioner, (INT16)m_nodes[ nodeId ].back, &partitioned_back_F, &partitioned_back_B );
+		PartitionNodeWithPlane( partitioner, m_nodes[ nodeId ].front, &partitioned_front_F, &partitioned_front_B );
+		PartitionNodeWithPlane( partitioner, m_nodes[ nodeId ].back, &partitioned_back_F, &partitioned_back_B );
 
 		m_nodes[ *front ].front = partitioned_front_F;
 		m_nodes[ *front ].back = partitioned_back_F;
@@ -1432,10 +1437,10 @@ static int CopySubTree( Tree & treeA, const Tree& treeB, int iNodeB )
 
 		rNodeA.plane = iNewPlaneA;
 
-		rNodeA.faces = BSP_NONE;
+		rNodeA.faces = NIL_INDEX;
 
 		FaceID iFaceB = rNodeB.faces;
-		while( iFaceB != BSP_NONE )
+		while( iFaceB != NIL_INDEX )
 		{
 			const Face& rFaceB = treeB.m_faces[ iFaceB ];
 
@@ -1462,14 +1467,14 @@ static int CopySubTree( Tree & treeA, const Tree& treeB, int iNodeB )
 // computes boolean A - B
 static void MergeSubtract( Tree & treeA, NodeID * iNodeA, Tree & treeB, const NodeID iNodeB )
 {
-	if( IsInternalNode( *iNodeA ) )
+	if( !IS_LEAF( *iNodeA ) )
 	{
 		// this is an internal node
 		Node& node = treeA.m_nodes[ *iNodeA ];
 		const Vector4& plane = treeA.m_planes[ node.plane ];
 
-		int nodeB_front = BSP_NONE;
-		int nodeB_back = BSP_NONE;
+		NodeID nodeB_front = NIL_INDEX;
+		NodeID nodeB_back = NIL_INDEX;
 		treeB.PartitionNodeWithPlane( plane, iNodeB, &nodeB_front, &nodeB_back );
 
 		MergeSubtract( treeA, &node.front, treeB, (INT16)nodeB_front );
@@ -1478,9 +1483,9 @@ static void MergeSubtract( Tree & treeA, NodeID * iNodeA, Tree & treeB, const No
 	else
 	{
 		// this is a leaf node
-		if( *iNodeA == BSP_SOLID_LEAF )
+		if( IS_SOLID_LEAF( *iNodeA ) )
 		{
-			*iNodeA = CopySubTree( treeA, treeB, iNodeB );
+//			*iNodeA = CopySubTree( treeA, treeB, iNodeB );
 		}
 		// empty space - do nothing
 	}
@@ -1549,7 +1554,7 @@ static void GenerateMesh_R(
 						   TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices
 						   )
 {
-	if( nodeId >= 0 )
+	if( IS_INTERNAL( nodeId ) )
 	{
 		const Node& node = tree.m_nodes[ nodeId ];
 		const Vector4& plane = tree.m_planes[ node.plane ];
@@ -1560,7 +1565,7 @@ static void GenerateMesh_R(
 
 		// Loop through all faces of this node.
 		FaceID iFaceId = node.faces;
-		while( iFaceId != BSP_NONE )
+		while( iFaceId != NIL_INDEX )
 		{
 			const Face& face = tree.m_faces[ iFaceId ];
 			mxASSERT( face.vertices.Num() >= 3 );
@@ -1602,7 +1607,7 @@ namespace Debug
 	{
 		int result = 0;
 		FaceID iFaceId = faces;
-		while( iFaceId != BSP_NONE )
+		while( iFaceId != NIL_INDEX )
 		{
 			const Face& face = tree.m_faces[ iFaceId ];
 			result++;
@@ -1610,13 +1615,13 @@ namespace Debug
 		}
 		return result;
 	}
-	static const String32 NodeID_To_String( INT16 nodeIndex )
+	static const String32 NodeID_To_String( NodeID nodeIndex )
 	{
 		String32 result;
-		if( nodeIndex >= 0 ) {
-			Str::SetInt( result, nodeIndex );
+		if( IS_LEAF(nodeIndex) ) {
+			Str::CopyS( result, IS_SOLID_LEAF(nodeIndex) ? "Solid" : "Air" );
 		} else {
-			Str::CopyS( result, (nodeIndex == BSP_SOLID_LEAF) ? "Solid" : "Air" );
+			Str::SetInt( result, GET_PAYLOAD(nodeIndex) );
 		}
 		return result;
 	}
@@ -1625,7 +1630,7 @@ namespace Debug
 		LogStream log(LL_Debug);
 		log.Repeat('\t', depth);
 
-		if( nodeIndex >= 0 )
+		if( !IS_LEAF( nodeIndex ) )
 		{
 			const Node& node = tree.m_nodes[ nodeIndex ];
 			const Vector4& plane = tree.m_planes[ node.plane ];
@@ -1633,8 +1638,8 @@ namespace Debug
 			log << "Node[" << nodeIndex << "]: neg=" << NodeID_To_String(node.back) << ", pos=" << NodeID_To_String(node.front) << ", faces: " << CalculateFaceCount(tree, node.faces);
 			log.Flush();
 
-			PrintTree_R( tree, (INT16)node.back, depth+1 );
-			PrintTree_R( tree, (INT16)node.front, depth+1 );			
+			PrintTree_R( tree, node.back, depth+1 );
+			PrintTree_R( tree, node.front, depth+1 );
 		}
 		else
 		{

@@ -121,9 +121,9 @@ public:
 
 enum NODE_TYPE
 {
-	NODE_INTERNAL = 0,
-	NODE_SOLID = 1,
-	NODE_AIR = 2,
+	INTERNAL_NODE = 0,
+	SOLID_LEAF = 1,	// An incell leaf node ( representing solid matter ).
+	EMPTY_LEAF = 2,	// An outcell leaf node ( representing empty space ).
 };
 
 typedef UINT16 NodeID;	//« upper two bits describe the type of the node
@@ -133,21 +133,28 @@ typedef UINT16 FaceID;
 inline bool IS_LEAF( NodeID nodeID ) {
 	return (nodeID & (~0<<14)) != 0;
 }
+inline bool IS_INTERNAL( NodeID nodeID ) {
+	return (nodeID & (~0<<14)) == 0;
+}
 inline NodeID MAKE_LEAF( NODE_TYPE type ) {
 	return type<<14;
 }
-inline bool IS_SOLID_LEAF( NodeID nodeID ) {
-	return (nodeID & (~0<<14)) == NODE_SOLID;
+inline NODE_TYPE GET_TYPE( NodeID nodeID ) {
+	return NODE_TYPE((nodeID >> 14) & 3);
 }
-inline bool IS_EMPTY_LEAF( NodeID nodeID ) {
-	return (nodeID & (~0<<14)) == NODE_AIR;
-}
-inline UINT16 GET_INDEX( NodeID nodeID ) {
+inline UINT16 GET_PAYLOAD( NodeID nodeID ) {
 	return nodeID & ~(~0<<14);
 }
+inline bool IS_SOLID_LEAF( NodeID nodeID ) {
+	return GET_TYPE(nodeID) == SOLID_LEAF;
+}
+inline bool IS_EMPTY_LEAF( NodeID nodeID ) {
+	return GET_TYPE(nodeID) == EMPTY_LEAF;
+}
 
 
-enum { BSP_NONE = (UINT16)~0 };
+
+enum { NIL_INDEX = (UINT16)~0 };
 
 struct Node : public CStruct
 {
@@ -267,27 +274,13 @@ public:	// Internal functions:
 
 	EPlaneSide Tree::PartitionNodeWithPlane(
 		const Vector4& partitioner,
-		int nodeId,
-		int *front,
-		int *back
+		NodeID nodeId,
+		NodeID *front,
+		NodeID *back
 	);
 };
 
-// Special node ids.
-enum {
-	BSP_ROOT_NODE = 0,		// (0 = root index)
-	// Negative numbers are leafs, not nodes
-	// (-1) is reserved
-	BSP_EMPTY_LEAF = -2,	// An outcell leaf node ( representing empty space ).
-	BSP_SOLID_LEAF = -3,	// An incell leaf node ( representing solid space ).
-};
-
-inline bool IsInternalNode( int nodeIndex )
-{
-	return nodeIndex > BSP_EMPTY_LEAF;
-}
-
-enum { BSP_MAX_NODES = MAX_UINT16-2 };	//-3 to account for BSP_SOLID_LEAF and BSP_EMPTY_LEAF
+enum { BSP_MAX_NODES = (1<<14) };
 enum { BSP_MAX_DEPTH = 32 };	// size of temporary stack storage (we try to avoid recursion)
 enum { BSP_MAX_PLANES = MAX_UINT16-1 };	// maximum allowed number of planes in a single tree
 enum { BSP_MAX_POLYS = MAX_UINT16-1 };
