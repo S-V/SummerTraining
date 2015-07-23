@@ -1222,10 +1222,11 @@ int RayIntersect(BSPNode *node, Point p, Vector d, float tmin, float tmax, float
 
 #if 1
 
-static EPlaneSide PartitionNodeWithPlane(
+EPlaneSide Tree::PartitionNodeWithPlane(
 	const Vector4& partitioner,
-	Tree & tree, int nodeId,
-	int *front, int *back
+	int nodeId,
+	int *front,
+	int *back
 	)
 {
 	//mxASSERT( nodeId >= 0 );
@@ -1235,8 +1236,8 @@ static EPlaneSide PartitionNodeWithPlane(
 		return PLANESIDE_CROSS;
 	}
 
-	const Node& node = tree.m_nodes[ nodeId ];
-	const Vector4& nodePlane = tree.m_planes[ node.plane ];
+	const Node& node = m_nodes[ nodeId ];
+	const Vector4& nodePlane = m_planes[ node.plane ];
 
 	// partition the operand
 	FaceID	frontFaces = BSP_NONE;
@@ -1244,7 +1245,7 @@ static EPlaneSide PartitionNodeWithPlane(
 	FaceID	coplanar = BSP_NONE;
 	int		faceCounts[4] = {0};
 
-	const int totalCount = tree.PartitionPolygons( partitioner, node.faces, &frontFaces, &backFaces, &coplanar, faceCounts );
+	const int totalCount = PartitionPolygons( partitioner, node.faces, &frontFaces, &backFaces, &coplanar, faceCounts );
 	const EPlaneSide side = ClassifyFaces( totalCount, faceCounts );
 
 	const float dot = Plane_GetNormal( partitioner ) * Plane_GetNormal( nodePlane );
@@ -1285,7 +1286,7 @@ static EPlaneSide PartitionNodeWithPlane(
 			Node *  partitioned_back_F = NULL;
 			Node *  partitioned_back_B = NULL;
 
-			PartitionNodeWithPlane( partitioner, tree, node.back, partitioned_back_F, partitioned_back_B );
+			PartitionNodeWithPlane( partitioner, node.back, partitioned_back_F, partitioned_back_B );
 
 			*front = node;
 			*front->SetBack( partitioned_back_F );
@@ -1299,7 +1300,7 @@ static EPlaneSide PartitionNodeWithPlane(
 			Node *  partitioned_front_F = NULL;
 			Node *  partitioned_front_B = NULL;
 
-			PartitionNodeWithPlane( partitioner, tree, node.front, partitioned_front_F, partitioned_front_B );
+			PartitionNodeWithPlane( partitioner, node.front, partitioned_front_F, partitioned_front_B );
 
 			*front = node;
 			*front->SetFront( partitioned_front_F );
@@ -1323,7 +1324,7 @@ static EPlaneSide PartitionNodeWithPlane(
 			Node *  partitioned_front_F = NULL;
 			Node *  partitioned_front_B = NULL;
 
-			PartitionNodeWithPlane( partitioner, tree, node.front, partitioned_front_F, partitioned_front_B );
+			PartitionNodeWithPlane( partitioner, node.front, partitioned_front_F, partitioned_front_B );
 
 			*front = partitioned_front_F;
 
@@ -1337,7 +1338,7 @@ static EPlaneSide PartitionNodeWithPlane(
 			Node *  partitioned_back_F = NULL;
 			Node *  partitioned_back_B = NULL;
 
-			PartitionNodeWithPlane( partitioner, tree, node.back, partitioned_back_F, partitioned_back_B );
+			PartitionNodeWithPlane( partitioner, node.back, partitioned_back_F, partitioned_back_B );
 
 			*front = partitioned_back_F;
 
@@ -1352,14 +1353,14 @@ static EPlaneSide PartitionNodeWithPlane(
 		// Split both children of the node.
 
 		// Create two new nodes resulting from the partitioning.
-		*front = NewNode( tree );
-		*back = NewNode( tree );
+		*front = NewNode( *this );
+		*back = NewNode( *this );
 
-		tree.m_nodes[ *front ].plane = node.plane;
-		tree.m_nodes[ *front ].faces = frontFaces;
+		m_nodes[ *front ].plane = node.plane;
+		m_nodes[ *front ].faces = frontFaces;
 
-		tree.m_nodes[ *back ].plane = node.plane;
-		tree.m_nodes[ *back ].faces = backFaces;
+		m_nodes[ *back ].plane = node.plane;
+		m_nodes[ *back ].faces = backFaces;
 
 
 		int partitioned_front_F = BSP_NONE;
@@ -1368,14 +1369,14 @@ static EPlaneSide PartitionNodeWithPlane(
 		int	partitioned_back_F = BSP_NONE;
 		int	partitioned_back_B = BSP_NONE;
 
-		PartitionNodeWithPlane( partitioner, tree, (INT16)tree.m_nodes[ nodeId ].front, &partitioned_front_F, &partitioned_front_B );
-		PartitionNodeWithPlane( partitioner, tree, (INT16)tree.m_nodes[ nodeId ].back, &partitioned_back_F, &partitioned_back_B );
+		PartitionNodeWithPlane( partitioner, (INT16)m_nodes[ nodeId ].front, &partitioned_front_F, &partitioned_front_B );
+		PartitionNodeWithPlane( partitioner, (INT16)m_nodes[ nodeId ].back, &partitioned_back_F, &partitioned_back_B );
 
-		tree.m_nodes[ *front ].front = partitioned_front_F;
-		tree.m_nodes[ *front ].back = partitioned_back_F;
+		m_nodes[ *front ].front = partitioned_front_F;
+		m_nodes[ *front ].back = partitioned_back_F;
 
-		tree.m_nodes[ *back ].front = partitioned_front_B;
-		tree.m_nodes[ *back ].back = partitioned_back_B;
+		m_nodes[ *back ].front = partitioned_front_B;
+		m_nodes[ *back ].back = partitioned_back_B;
 	}
 
 	return side;
@@ -1459,17 +1460,17 @@ static int CopySubTree( Tree & treeA, const Tree& treeB, int iNodeB )
 }
 
 // computes boolean A - B
-static void MergeSubtract( Tree & treeA, NodeID * nodeA, Tree& treeB, const NodeID nodeB )
+static void MergeSubtract( Tree & treeA, NodeID * iNodeA, Tree & treeB, const NodeID iNodeB )
 {
-	if( (INT16)*nodeA >= 0 )
+	if( IsInternalNode( *iNodeA ) )
 	{
 		// this is an internal node
-		Node& node = treeA.m_nodes[ *nodeA ];
+		Node& node = treeA.m_nodes[ *iNodeA ];
 		const Vector4& plane = treeA.m_planes[ node.plane ];
 
 		int nodeB_front = BSP_NONE;
 		int nodeB_back = BSP_NONE;
-		PartitionNodeWithPlane( plane, treeB, nodeB, &nodeB_front, &nodeB_back );
+		treeB.PartitionNodeWithPlane( plane, iNodeB, &nodeB_front, &nodeB_back );
 
 		MergeSubtract( treeA, &node.front, treeB, (INT16)nodeB_front );
 		MergeSubtract( treeA, &node.back, treeB, (INT16)nodeB_back );
@@ -1477,9 +1478,9 @@ static void MergeSubtract( Tree & treeA, NodeID * nodeA, Tree& treeB, const Node
 	else
 	{
 		// this is a leaf node
-		if( *nodeA == BSP_SOLID_LEAF )
+		if( *iNodeA == BSP_SOLID_LEAF )
 		{
-			*nodeA = CopySubTree( treeA, treeB, nodeB );
+			*iNodeA = CopySubTree( treeA, treeB, iNodeB );
 		}
 		// empty space - do nothing
 	}
@@ -1487,8 +1488,8 @@ static void MergeSubtract( Tree & treeA, NodeID * nodeA, Tree& treeB, const Node
 
 void Tree::Subtract( Tree& other )
 {
-	NodeID root = 0;
-	MergeSubtract( *this, &root, other, 0 );
+	NodeID rootId = 0;
+	MergeSubtract( *this, &rootId, other, 0 );
 }
 #endif
 

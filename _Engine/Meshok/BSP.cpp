@@ -613,7 +613,7 @@ static UINT32 GetPlaneIndex(
 	return newPlaneIndex;
 }
 
-static inline NodeID NewNode( BspTree & tree )
+static inline BspNodeID NewNode( BspTree & tree )
 {
 	const UINT32 newNodeIndex = tree.m_nodes.Num();
 	mxASSERT( newNodeIndex <= BSP_MAX_NODES );
@@ -736,12 +736,12 @@ static UINT32 PartitionPolygons(
 
 // returns index of new node
 //
-static NodeID BuildTree_R( BspTree & tree, const UINT16 polygons, BspStats &stats )
+static BspNodeID BuildTree_R( BspTree & tree, const UINT16 polygons, BspStats &stats )
 {
 	mxASSERT( polygons != BSP_NONE );
 
 	// allocate a new internal node
-	const NodeID nodeIndex = NewNode( tree );
+	const BspNodeID nodeIndex = NewNode( tree );
 
 	// partition the list
 	BspPolyID	frontPolys = BSP_NONE;

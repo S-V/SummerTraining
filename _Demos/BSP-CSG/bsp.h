@@ -119,8 +119,33 @@ public:
 	}
 };
 
-typedef UINT16 NodeID;
+enum NODE_TYPE
+{
+	NODE_INTERNAL = 0,
+	NODE_SOLID = 1,
+	NODE_AIR = 2,
+};
+
+typedef UINT16 NodeID;	//« upper two bits describe the type of the node
 typedef UINT16 FaceID;
+
+
+inline bool IS_LEAF( NodeID nodeID ) {
+	return (nodeID & (~0<<14)) != 0;
+}
+inline NodeID MAKE_LEAF( NODE_TYPE type ) {
+	return type<<14;
+}
+inline bool IS_SOLID_LEAF( NodeID nodeID ) {
+	return (nodeID & (~0<<14)) == NODE_SOLID;
+}
+inline bool IS_EMPTY_LEAF( NodeID nodeID ) {
+	return (nodeID & (~0<<14)) == NODE_AIR;
+}
+inline UINT16 GET_INDEX( NodeID nodeID ) {
+	return nodeID & ~(~0<<14);
+}
+
 
 enum { BSP_NONE = (UINT16)~0 };
 
@@ -238,6 +263,13 @@ public:	// Internal functions:
 		FaceID *coplanar,
 		int faceCounts[4],	// EPlaneSide
 		const float epsilon = 0.13f
+	);
+
+	EPlaneSide Tree::PartitionNodeWithPlane(
+		const Vector4& partitioner,
+		int nodeId,
+		int *front,
+		int *back
 	);
 };
 
