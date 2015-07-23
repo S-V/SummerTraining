@@ -521,7 +521,7 @@ the depth of the tree.
 // and avoid introducing new partitioning planes
 //
 static
-BspFaceID FindBestSplitterIndex( const Tree& tree, const BspFaceID polygons,
+FaceID FindBestSplitterIndex( const Tree& tree, const FaceID polygons,
 							 const SplittingCriteria& options = SplittingCriteria() )
 {
 	mxASSERT(polygons != BSP_NONE);
@@ -531,10 +531,10 @@ BspFaceID FindBestSplitterIndex( const Tree& tree, const BspFaceID polygons,
 	INT		numSplitFaces = 0;
 	INT		numCoplanarFaces = 0;
 
-	BspFaceID	bestSplitter = 0;
+	FaceID	bestSplitter = 0;
 	float	bestScore = 1e6f;	// the less value the better
 
-	BspFaceID iPolyA = polygons;
+	FaceID iPolyA = polygons;
 
 	while( iPolyA != BSP_NONE )
 	{
@@ -545,7 +545,7 @@ BspFaceID FindBestSplitterIndex( const Tree& tree, const BspFaceID polygons,
 		const Vector4 planeA = PlaneFromPolygon( polygonA );
 
 		// test other polygons against the potential splitter
-		BspFaceID iPolyB = polygons;
+		FaceID iPolyB = polygons;
 		while( iPolyB != BSP_NONE )
 		{
 			const Face& polygonB = tree.m_faces[ iPolyB ];
@@ -553,7 +553,11 @@ BspFaceID FindBestSplitterIndex( const Tree& tree, const BspFaceID polygons,
 			{
 				// evaluate heuristic cost and select the best candidate
 
-				const EPolyStatus planeSide = ClassifyPolygon(planeA, polygonB.vertices.ToPtr(), polygonB.vertices.Num(), options.planeEpsilon);
+				const EPolyStatus planeSide = ClassifyPolygon(
+					planeA,
+					polygonB.vertices.ToPtr(), polygonB.vertices.Num(),
+					options.planeEpsilon
+				);
 
 				switch( planeSide )
 				{
@@ -626,7 +630,7 @@ static UINT32 GetPlaneIndex(
 	return newPlaneIndex;
 }
 
-static inline BspNodeID NewNode( Tree & tree )
+static inline NodeID NewNode( Tree & tree )
 {
 	const UINT32 newNodeIndex = tree.m_nodes.Num();
 	mxASSERT( newNodeIndex <= BSP_MAX_NODES );
@@ -638,11 +642,12 @@ static inline BspNodeID NewNode( Tree & tree )
 	return newNodeIndex;
 }
 
-static BspFaceID AddPolygon( const Face& poly, Tree & tree, BspFaceID * head )
+static FaceID AddPolygon( const Face& poly, Tree & tree, FaceID * head )
 {
 	const UINT32 newPolyIndex = tree.m_faces.Num();
 	mxASSERT( newPolyIndex <= BSP_MAX_POLYS );
 	Face &newPoly = tree.m_faces.Add();
+	MemZero(&newPoly,sizeof(Face));
 	newPoly.vertices.SetExternalStorage( newPoly.buffer, mxCOUNT_OF(newPoly.buffer) );
 	newPoly.vertices = poly.vertices;
 	newPoly.next = *head;
@@ -650,7 +655,7 @@ static BspFaceID AddPolygon( const Face& poly, Tree & tree, BspFaceID * head )
 	return newPolyIndex;
 }
 
-static int CalculatePolygonCount( const Tree& tree, BspFaceID iPoly )
+static int CalculatePolygonCount( const Tree& tree, FaceID iPoly )
 {
 	int result = 0;
 	while( iPoly != BSP_NONE )
@@ -662,24 +667,23 @@ static int CalculatePolygonCount( const Tree& tree, BspFaceID iPoly )
 	return result;
 }
 
-static int PartitionPolygons2(
-							  const Vector4& partitioner,
-							  Tree & tree,
-							  const BspFaceID polygons,
-							  BspFaceID *frontFaces,
-							  BspFaceID *backFaces,
-							  BspFaceID *coplanar,
-							  int faceCounts[4],	// EPlaneSide
-							  const float epsilon = 0.13f
-								 )
+int Tree::PartitionPolygons(
+							const Vector4& partitioner,
+							const FaceID polygons,
+							FaceID *frontFaces,
+							FaceID *backFaces,
+							FaceID *coplanar,
+							int faceCounts[4],	// EPlaneSide
+							const float epsilon
+							)
 {
 	int totalFaces = 0;	// the total number of all considered polygons
 
-	BspFaceID iPoly = polygons;
+	FaceID iPoly = polygons;
 	while( iPoly != BSP_NONE )
 	{
-		Face &	polygon = tree.m_faces[ iPoly ];
-		const BspFaceID iNextPoly = polygon.next;
+		Face &	polygon = m_faces[ iPoly ];
+		const FaceID iNextPoly = polygon.next;
 
 		Vertex	buffer1[64];
 		Vertex	buffer2[64];
@@ -696,8 +700,8 @@ static int PartitionPolygons2(
 		if( side == PLANESIDE_CROSS )
 		{
 			mxASSERT( frontPoly.vertices.Num() && backPoly.vertices.Num() );
-			AddPolygon( frontPoly, tree, frontFaces );
-			AddPolygon( backPoly, tree, backFaces );
+			AddPolygon( frontPoly, *this, frontFaces );
+			AddPolygon( backPoly, *this, backFaces );
 		}
 		else if( side == PLANESIDE_FRONT )
 		{
@@ -742,12 +746,12 @@ static EPlaneSide ClassifyFaces( int total, int sides[4] )
 
 // returns index of new node
 //
-static BspNodeID BuildTree_R( Tree & tree, const UINT16 polygons, BspStats &stats )
+static NodeID BuildTree_R( Tree & tree, const UINT16 polygons, BspStats &stats )
 {
 	mxASSERT( polygons != BSP_NONE );
 
 	// allocate a new internal node
-	const BspNodeID nodeIndex = NewNode( tree );
+	const NodeID nodeIndex = NewNode( tree );
 
 	// select the best partitioner
 	SplittingCriteria	settings;
@@ -756,17 +760,17 @@ static BspNodeID BuildTree_R( Tree & tree, const UINT16 polygons, BspStats &stat
 	settings.balanceVsCuts = 1;
 	settings.planeEpsilon = 0.1f;
 
-	const BspFaceID bestSplitter = FindBestSplitterIndex( tree, polygons, settings );
+	const FaceID bestSplitter = FindBestSplitterIndex( tree, polygons, settings );
 	const Vector4 splittingPlane = PlaneFromPolygon( tree.m_faces[ bestSplitter ] );
 
 	// partition the list
-	BspFaceID	frontFaces = BSP_NONE;
-	BspFaceID	backFaces = BSP_NONE;
-	BspFaceID	coplanar = BSP_NONE;
+	FaceID	frontFaces = BSP_NONE;
+	FaceID	backFaces = BSP_NONE;
+	FaceID	coplanar = BSP_NONE;
 	int			faceCounts[4] = {0};
 
-	const int totalCount = PartitionPolygons2(
-		splittingPlane, tree, polygons, &frontFaces, &backFaces, &coplanar, faceCounts
+	tree.PartitionPolygons(
+		splittingPlane, polygons, &frontFaces, &backFaces, &coplanar, faceCounts
 	);
 
 	stats.m_numSplits += faceCounts[PLANESIDE_CROSS];
@@ -973,7 +977,6 @@ int CastRay_R(
 		if( denom != 0.0f )
 		{
 			float t = -distance / denom;
-			//DBGOUT("t=%f", t);
 			if( 0.0f <= t && t <= tmax )
 			{
 				if( t >= tmin ) {
@@ -1225,24 +1228,23 @@ static EPlaneSide PartitionNodeWithPlane(
 	int *front, int *back
 	)
 {
-	//// if this is a leaf
-	//if( nodeId < 0 ) {
-	//	*front = nodeId;
-	//	*back = nodeId;
-	//	return PLANESIDE_CROSS;
-	//}
-	mxASSERT( nodeId >= 0 );
+	//mxASSERT( nodeId >= 0 );
+	if( nodeId < 0 ) {
+		*front = nodeId;
+		*back = nodeId;
+		return PLANESIDE_CROSS;
+	}
 
 	const Node& node = tree.m_nodes[ nodeId ];
 	const Vector4& nodePlane = tree.m_planes[ node.plane ];
 
 	// partition the operand
-	BspFaceID	frontFaces = BSP_NONE;
-	BspFaceID	backFaces = BSP_NONE;
-	BspFaceID	coplanar = BSP_NONE;
-	int			faceCounts[4] = {0};
+	FaceID	frontFaces = BSP_NONE;
+	FaceID	backFaces = BSP_NONE;
+	FaceID	coplanar = BSP_NONE;
+	int		faceCounts[4] = {0};
 
-	const int totalCount = PartitionPolygons2( partitioner, tree, node.faces, &frontFaces, &backFaces, &coplanar, faceCounts );
+	const int totalCount = tree.PartitionPolygons( partitioner, node.faces, &frontFaces, &backFaces, &coplanar, faceCounts );
 	const EPlaneSide side = ClassifyFaces( totalCount, faceCounts );
 
 	const float dot = Plane_GetNormal( partitioner ) * Plane_GetNormal( nodePlane );
@@ -1366,8 +1368,8 @@ static EPlaneSide PartitionNodeWithPlane(
 		int	partitioned_back_F = BSP_NONE;
 		int	partitioned_back_B = BSP_NONE;
 
-		PartitionNodeWithPlane( partitioner, tree, tree.m_nodes[ nodeId ].front, &partitioned_front_F, &partitioned_front_B );
-		PartitionNodeWithPlane( partitioner, tree, tree.m_nodes[ nodeId ].back, &partitioned_back_F, &partitioned_back_B );
+		PartitionNodeWithPlane( partitioner, tree, (INT16)tree.m_nodes[ nodeId ].front, &partitioned_front_F, &partitioned_front_B );
+		PartitionNodeWithPlane( partitioner, tree, (INT16)tree.m_nodes[ nodeId ].back, &partitioned_back_F, &partitioned_back_B );
 
 		tree.m_nodes[ *front ].front = partitioned_front_F;
 		tree.m_nodes[ *front ].back = partitioned_back_F;
@@ -1413,24 +1415,53 @@ static int AppendTree( Tree & treeA, const Tree& treeB )
 #endif
 
 // treeA <- (treeB, nodeB)
-static int CopySubTree( Tree & treeA, const Tree& treeB, int nodeB )
+static int CopySubTree( Tree & treeA, const Tree& treeB, int iNodeB )
 {
 	int subtreeId = 0;
-	if( nodeB >= 0 )
+	if( iNodeB >= 0 )
 	{
+		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
+		const Vector4& rPlaneB = treeB.m_planes[ rNodeB.plane ];
 
+		const int iNewPlaneA = treeA.m_planes.Num();
+		treeA.m_planes.Add( rPlaneB );
+
+		const int iNewNodeA = NewNode( treeA );
+		Node &rNodeA = treeA.m_nodes[ iNewNodeA ];
+
+		rNodeA.plane = iNewPlaneA;
+
+		rNodeA.faces = BSP_NONE;
+
+		FaceID iFaceB = rNodeB.faces;
+		while( iFaceB != BSP_NONE )
+		{
+			const Face& rFaceB = treeB.m_faces[ iFaceB ];
+
+			const int iNewFaceA = treeA.m_faces.Num();
+			treeA.m_faces.Add( rFaceB );
+
+			Face &rFaceA = treeA.m_faces[ iNewFaceA ];
+			rFaceA.next = rNodeA.faces;
+			rNodeA.faces = iNewFaceA;
+
+			iFaceB = rFaceB.next;
+		}
+
+		treeA.m_nodes[ iNewNodeA ].front = CopySubTree( treeA, treeB, (INT16)rNodeB.front );
+		treeA.m_nodes[ iNewNodeA ].back = CopySubTree( treeA, treeB, (INT16)rNodeB.back );
 	}
 	else
 	{
-		subtreeId = nodeB;
+		subtreeId = iNodeB;
 	}
 	return subtreeId;
 }
 
 // computes boolean A - B
-static void MergeSubtract( Tree & treeA, BspNodeID * nodeA, const Tree& treeB, const BspNodeID nodeB )
+static void MergeSubtract( Tree & treeA, NodeID * nodeA, Tree& treeB, const NodeID nodeB )
 {
-	if( *nodeA >= 0 )
+	if( (INT16)*nodeA >= 0 )
 	{
 		// this is an internal node
 		Node& node = treeA.m_nodes[ *nodeA ];
@@ -1438,15 +1469,15 @@ static void MergeSubtract( Tree & treeA, BspNodeID * nodeA, const Tree& treeB, c
 
 		int nodeB_front = BSP_NONE;
 		int nodeB_back = BSP_NONE;
-		//PartitionNodeWithPlane( plane, treeB, nodeB, &nodeB_front, &nodeB_back );
-UNDONE;
-		MergeSubtract( treeA, &node.front, treeB, nodeB_front );
-		MergeSubtract( treeA, &node.back, treeB, nodeB_back );
+		PartitionNodeWithPlane( plane, treeB, nodeB, &nodeB_front, &nodeB_back );
+
+		MergeSubtract( treeA, &node.front, treeB, (INT16)nodeB_front );
+		MergeSubtract( treeA, &node.back, treeB, (INT16)nodeB_back );
 	}
 	else
 	{
 		// this is a leaf node
-		if( (INT16)*nodeA == BSP_SOLID_LEAF )
+		if( *nodeA == BSP_SOLID_LEAF )
 		{
 			*nodeA = CopySubTree( treeA, treeB, nodeB );
 		}
@@ -1454,9 +1485,10 @@ UNDONE;
 	}
 }
 
-void Tree::Subtract( const Tree& other )
+void Tree::Subtract( Tree& other )
 {
-	//MergeSubtract( *this, 0, other, 0 );
+	NodeID root = 0;
+	MergeSubtract( *this, &root, other, 0 );
 }
 #endif
 
@@ -1526,7 +1558,7 @@ static void GenerateMesh_R(
 		GenerateMesh_R( tree, (INT16)node.back, vertices, indices );
 
 		// Loop through all faces of this node.
-		BspFaceID iFaceId = node.faces;
+		FaceID iFaceId = node.faces;
 		while( iFaceId != BSP_NONE )
 		{
 			const Face& face = tree.m_faces[ iFaceId ];
@@ -1565,10 +1597,10 @@ void Tree::GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indi
 
 namespace Debug
 {
-	static int CalculateFaceCount( const Tree& tree, BspFaceID faces )
+	static int CalculateFaceCount( const Tree& tree, FaceID faces )
 	{
 		int result = 0;
-		BspFaceID iFaceId = faces;
+		FaceID iFaceId = faces;
 		while( iFaceId != BSP_NONE )
 		{
 			const Face& face = tree.m_faces[ iFaceId ];

@@ -117,6 +117,31 @@ void MakeBoxMesh(
 	indices[33] = 20; indices[34] = 22; indices[35] = 23;
 }
 
+static void UpdateRenderMesh( const BSP::Vertex* vertices, int numVertices, const UINT16* indices, int numIndices )
+{
+	const bgfx::Memory* vertexMemory = bgfx::makeRef( vertices, sizeof(vertices[0])*numVertices );
+	const bgfx::Memory* indexMemory = bgfx::makeRef( indices, sizeof(indices[0])*numIndices );
+
+	bgfx::updateDynamicVertexBuffer( g_dynamicVB, 0, vertexMemory );
+	bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );
+}
+
+static void Subtract(
+				  const Float3& position,
+				  BSP::Tree & worldTree,
+				  const BSP::Tree& mesh,	// subtractive brush
+				  BSP::Tree & temporary,
+				  TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices
+				  )
+{
+	temporary.CopyFrom( mesh );
+	temporary.Translate( position );
+	worldTree.Subtract( temporary );
+	worldTree.GenerateMesh( vertices, indices );
+	DBGOUT("GenerateMesh: %d vertices, %d indices", vertices.Num(), indices.Num());
+	UpdateRenderMesh( vertices.ToPtr(), vertices.Num(), indices.ToPtr(), indices.Num() );
+}
+
 ERet MyEntryPoint()
 {
 	SetupBaseUtil	setupBase;
@@ -133,7 +158,7 @@ ERet MyEntryPoint()
 
 	// Build a BSP tree for the destructible environment.
 
-	BSP::Tree	tree;
+	BSP::Tree	worldTree;
 	{
 		// Calculate tangent frames (needed for normal mapping).
 		calcTangents(
@@ -158,10 +183,10 @@ ERet MyEntryPoint()
 			}
 		} enumerateMeshVertices;
 
-		tree.Build( &enumerateMeshVertices );
+		worldTree.Build( &enumerateMeshVertices );
 
 		DBGOUT("\nWorld BSP tree:\n");
-		BSP::Debug::PrintTree(tree);
+		BSP::Debug::PrintTree(worldTree);
 	}
 
 	// Build a BSP tree for the subtractive mesh.
@@ -188,20 +213,13 @@ ERet MyEntryPoint()
 	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
 
-	{
-		const bgfx::Memory* vertexMemory = bgfx::makeRef( g_planeVertices, sizeof(g_planeVertices) );
-		const bgfx::Memory* indexMemory = bgfx::makeRef( g_planeIndices, sizeof(g_planeIndices) );
-
-		bgfx::updateDynamicVertexBuffer( g_dynamicVB, 0, vertexMemory );
-		bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );
-	}
-
+	UpdateRenderMesh( g_planeVertices, BX_COUNTOF(g_planeVertices), g_planeIndices, BX_COUNTOF(g_planeIndices) );
 
 	int fireRate = 10; // shots per second
 	int64_t lastTimeShot = 0;
 
 
-	// Temporary storage for storing intermediate results of CSG calculations.
+	// Temporary storage for storing intermediate results of CSG calculations to reduce memory allocations.
 
 	BSP::Tree	temporary;
 
@@ -350,18 +368,17 @@ ERet MyEntryPoint()
 				cameraGetAt((float*)&lookAt);
 				rayDir = Float3_Normalized(lookAt - rayPos);
 
-				tree.CastRay( rayPos, rayDir, lastHit );
-				if(lastHit.hitAnything) {
+				worldTree.CastRay( rayPos, rayDir, lastHit );
+				if( lastHit.hitAnything )
+				{
 //					LogStream(LL_Info) << "Hit pos: " << lastHit.position;
-					temporary.CopyFrom( operand );
-					temporary.Translate( lastHit.position );
-					tree.GenerateMesh( rawVertices, rawIndices );
-					DBGOUT("GenerateMesh: %d vertices, %d indices", rawVertices.Num(), rawIndices.Num());
-					tree.Subtract(operand);
-					const bgfx::Memory* vertexMemory = bgfx::makeRef( rawVertices.ToPtr(), rawVertices.GetDataSize() );
-					const bgfx::Memory* indexMemory = bgfx::makeRef( rawIndices.ToPtr(), rawIndices.GetDataSize() );
-					bgfx::updateDynamicVertexBuffer( g_dynamicVB, 0, vertexMemory );
-					bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );
+					Subtract(
+						lastHit.position,
+						worldTree,
+						operand,
+						temporary,
+						rawVertices, rawIndices
+					);
 				}
 			}		
 		}
