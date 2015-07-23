@@ -188,11 +188,13 @@ ERet MyEntryPoint()
 	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
 
-	const bgfx::Memory* vertexMemory = bgfx::makeRef( g_planeVertices, sizeof(g_planeVertices) );
-	const bgfx::Memory* indexMemory = bgfx::makeRef( g_planeIndices, sizeof(g_planeIndices) );
+	{
+		const bgfx::Memory* vertexMemory = bgfx::makeRef( g_planeVertices, sizeof(g_planeVertices) );
+		const bgfx::Memory* indexMemory = bgfx::makeRef( g_planeIndices, sizeof(g_planeIndices) );
 
-	bgfx::updateDynamicVertexBuffer( g_dynamicVB, 0, vertexMemory );
-	bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );
+		bgfx::updateDynamicVertexBuffer( g_dynamicVB, 0, vertexMemory );
+		bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );
+	}
 
 
 	int fireRate = 10; // shots per second
@@ -355,7 +357,11 @@ ERet MyEntryPoint()
 					temporary.Translate( lastHit.position );
 					tree.GenerateMesh( rawVertices, rawIndices );
 					DBGOUT("GenerateMesh: %d vertices, %d indices", rawVertices.Num(), rawIndices.Num());
-					//tree.Subtract(operand);
+					tree.Subtract(operand);
+					const bgfx::Memory* vertexMemory = bgfx::makeRef( rawVertices.ToPtr(), rawVertices.GetDataSize() );
+					const bgfx::Memory* indexMemory = bgfx::makeRef( rawIndices.ToPtr(), rawIndices.GetDataSize() );
+					bgfx::updateDynamicVertexBuffer( g_dynamicVB, 0, vertexMemory );
+					bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );
 				}
 			}		
 		}
@@ -368,9 +374,6 @@ ERet MyEntryPoint()
 
 	bgfx::destroyDynamicIndexBuffer( g_dynamicIB );
 	bgfx::destroyDynamicVertexBuffer( g_dynamicVB );
-
-	//bgfx::release( indexMemory );
-	//bgfx::release( vertexMemory );
 
 	renderer.Shutdown();
 

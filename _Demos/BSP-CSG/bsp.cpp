@@ -662,33 +662,18 @@ static int CalculatePolygonCount( const Tree& tree, BspFaceID iPoly )
 	return result;
 }
 
-// returns index of the splitting plane
-//
-static UINT32 PartitionPolygons(
-					   Tree & tree,
-					   const int nodeIndex,
-					   BspStats &stats,
-					   const BspFaceID polygons,
-					   BspFaceID *frontPolys,
-					   BspFaceID *backPolys,
-					   const float epsilon = 0.13f
-					   )
+static int PartitionPolygons2(
+							  const Vector4& partitioner,
+							  Tree & tree,
+							  const BspFaceID polygons,
+							  BspFaceID *frontFaces,
+							  BspFaceID *backFaces,
+							  BspFaceID *coplanar,
+							  int faceCounts[4],	// EPlaneSide
+							  const float epsilon = 0.13f
+								 )
 {
-	// select the best partitioner
-	SplittingCriteria	settings;
-	// we don't need polygons for collision detection
-	settings.splitCost = 0;
-	settings.balanceVsCuts = 1;
-	settings.planeEpsilon = 0.1f;
-
-	const BspFaceID bestSplitter = FindBestSplitterIndex( tree, polygons, settings );
-	const Vector4 splittingPlane = PlaneFromPolygon( tree.m_faces[ bestSplitter ] );
-
-	Node& splittingNode = tree.m_nodes[ nodeIndex ];
-
-	int front = 0, back = 0, split = 0, coplanar = 0;
-
-	// partition the list
+	int totalFaces = 0;	// the total number of all considered polygons
 
 	BspFaceID iPoly = polygons;
 	while( iPoly != BSP_NONE )
@@ -696,55 +681,63 @@ static UINT32 PartitionPolygons(
 		Face &	polygon = tree.m_faces[ iPoly ];
 		const BspFaceID iNextPoly = polygon.next;
 
-		if( iPoly != bestSplitter )
+		Vertex	buffer1[64];
+		Vertex	buffer2[64];
+
+		Face	frontPoly;
+		Face	backPoly;
+		frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
+		backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+
+		const EPlaneSide side = SplitConvexPolygonByPlane( polygon, frontPoly, backPoly, partitioner, epsilon );
+
+		faceCounts[side]++;
+
+		if( side == PLANESIDE_CROSS )
 		{
-			Vertex	buffer1[64];
-			Vertex	buffer2[64];
-
-			Face	frontPoly;
-			Face	backPoly;
-			frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
-			backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
-
-			const EPlaneSide side = SplitConvexPolygonByPlane( polygon, frontPoly, backPoly, splittingPlane, epsilon );
-
-			if( side == PLANESIDE_CROSS )
-			{
-				mxASSERT( frontPoly.vertices.Num() && backPoly.vertices.Num() );
-				AddPolygon( frontPoly, tree, frontPolys );
-				AddPolygon( backPoly, tree, backPolys );
-				stats.m_numSplits++;
-				split++;
-			}
-			else if( side == PLANESIDE_FRONT )
-			{
-				//mxASSERT( frontPoly.vertices.Num() );
-				polygon.next = *frontPolys;
-				*frontPolys = iPoly;
-				front++;
-			}
-			else if( side == PLANESIDE_BACK )
-			{
-				//mxASSERT( backPoly.vertices.Num() );
-				polygon.next = *backPolys;
-				*backPolys = iPoly;
-				back++;
-			}
-			else
-			{
-				mxASSERT( side == PLANESIDE_ON );
-				polygon.next = splittingNode.faces;
-				splittingNode.faces = iPoly;
-				coplanar++;
-			}
+			mxASSERT( frontPoly.vertices.Num() && backPoly.vertices.Num() );
+			AddPolygon( frontPoly, tree, frontFaces );
+			AddPolygon( backPoly, tree, backFaces );
 		}
+		else if( side == PLANESIDE_FRONT )
+		{
+			polygon.next = *frontFaces;
+			*frontFaces = iPoly;
+		}
+		else if( side == PLANESIDE_BACK )
+		{
+			polygon.next = *backFaces;
+			*backFaces = iPoly;
+		}
+		else
+		{
+			mxASSERT( side == PLANESIDE_ON );
+			polygon.next = *coplanar;
+			*coplanar = iPoly;
+		}
+
 		// continue
 		iPoly = iNextPoly;
+		totalFaces++;
 	}
 
-	//LogStream(LL_Debug) << "front: " << front << ", back: " << back << ", split: " << split << ", on: " << coplanar;
+	return totalFaces;
+}
 
-	return GetPlaneIndex( tree, splittingPlane );
+static EPlaneSide ClassifyFaces( int total, int sides[4] )
+{
+	if ( sides[PLANESIDE_ON] == total ) {
+		return PLANESIDE_ON;
+	}
+	// if nothing at the front of the clipping plane
+	if ( sides[PLANESIDE_FRONT] == 0 ) {
+		return PLANESIDE_BACK;
+	}
+	// if nothing at the back of the clipping plane
+	if ( sides[PLANESIDE_BACK] == 0 ) {
+		return PLANESIDE_FRONT;
+	}
+	return PLANESIDE_CROSS;
 }
 
 // returns index of new node
@@ -756,17 +749,35 @@ static BspNodeID BuildTree_R( Tree & tree, const UINT16 polygons, BspStats &stat
 	// allocate a new internal node
 	const BspNodeID nodeIndex = NewNode( tree );
 
-	// partition the list
-	BspFaceID	frontPolys = BSP_NONE;
-	BspFaceID	backPolys = BSP_NONE;
-	const UINT32 splitPlane = PartitionPolygons( tree, nodeIndex, stats, polygons, &frontPolys, &backPolys );
+	// select the best partitioner
+	SplittingCriteria	settings;
+	// we don't need polygons for collision detection
+	settings.splitCost = 0;
+	settings.balanceVsCuts = 1;
+	settings.planeEpsilon = 0.1f;
 
-	tree.m_nodes[ nodeIndex ].plane = splitPlane;
+	const BspFaceID bestSplitter = FindBestSplitterIndex( tree, polygons, settings );
+	const Vector4 splittingPlane = PlaneFromPolygon( tree.m_faces[ bestSplitter ] );
+
+	// partition the list
+	BspFaceID	frontFaces = BSP_NONE;
+	BspFaceID	backFaces = BSP_NONE;
+	BspFaceID	coplanar = BSP_NONE;
+	int			faceCounts[4] = {0};
+
+	const int totalCount = PartitionPolygons2(
+		splittingPlane, tree, polygons, &frontFaces, &backFaces, &coplanar, faceCounts
+	);
+
+	stats.m_numSplits += faceCounts[PLANESIDE_CROSS];
+
+	tree.m_nodes[ nodeIndex ].plane = GetPlaneIndex( tree, splittingPlane );
+	tree.m_nodes[ nodeIndex ].faces = coplanar;
 
 	// recursively process children
-	if( frontPolys != BSP_NONE )
+	if( frontFaces != BSP_NONE )
 	{
-		tree.m_nodes[ nodeIndex ].front = BuildTree_R( tree, frontPolys, stats );
+		tree.m_nodes[ nodeIndex ].front = BuildTree_R( tree, frontFaces, stats );
 	}
 	else
 	{
@@ -774,9 +785,9 @@ static BspNodeID BuildTree_R( Tree & tree, const UINT16 polygons, BspStats &stat
 		stats.m_numEmptyLeaves++;
 	}
 
-	if( backPolys != BSP_NONE )
+	if( backFaces != BSP_NONE )
 	{
-		tree.m_nodes[ nodeIndex ].back = BuildTree_R( tree, backPolys, stats );
+		tree.m_nodes[ nodeIndex ].back = BuildTree_R( tree, backFaces, stats );
 	}
 	else
 	{
@@ -1205,83 +1216,7 @@ int RayIntersect(BSPNode *node, Point p, Vector d, float tmin, float tmax, float
 	return 0;
 }
 #endif
-mxTODO("merge with PartitionPolygons");
-static EPlaneSide PartitionPolygons2(
-								 const Vector4& partitioner,
-								 Tree & tree,
-								 const BspFaceID polygons,
-								 BspFaceID *frontPolys,
-								 BspFaceID *backPolys,
-								 BspFaceID *coplanar,
-								 const float epsilon = 0.13f
-								 )
-{
-	int front = 0, back = 0, split = 0, coplanars = 0, total = 0;
 
-	BspFaceID iPoly = polygons;
-	while( iPoly != BSP_NONE )
-	{
-		Face &	polygon = tree.m_faces[ iPoly ];
-		const BspFaceID iNextPoly = polygon.next;
-
-		Vertex	buffer1[64];
-		Vertex	buffer2[64];
-
-		Face	frontPoly;
-		Face	backPoly;
-		frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
-		backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
-
-		const EPlaneSide side = SplitConvexPolygonByPlane( polygon, frontPoly, backPoly, partitioner, epsilon );
-
-		if( side == PLANESIDE_CROSS )
-		{
-			mxASSERT( frontPoly.vertices.Num() && backPoly.vertices.Num() );
-			AddPolygon( frontPoly, tree, frontPolys );
-			AddPolygon( backPoly, tree, backPolys );
-			split++;
-		}
-		else if( side == PLANESIDE_FRONT )
-		{
-			mxASSERT( frontPoly.vertices.Num() );
-			polygon.next = *frontPolys;
-			*frontPolys = iPoly;
-			front++;
-		}
-		else if( side == PLANESIDE_BACK )
-		{
-			mxASSERT( backPoly.vertices.Num() );
-			polygon.next = *backPolys;
-			*backPolys = iPoly;
-			back++;
-		}
-		else
-		{
-			mxASSERT( side == PLANESIDE_ON );
-			polygon.next = *coplanar;
-			*coplanar = iPoly;
-			coplanars++;
-		}
-
-		// continue
-		iPoly = iNextPoly;
-		total++;
-	}
-
-	if ( coplanars == total ) {
-		return PLANESIDE_ON;
-	}
-	// if nothing at the front of the clipping plane
-	if ( front == 0 ) {
-		return PLANESIDE_BACK;
-	}
-	// if nothing at the back of the clipping plane
-	if ( back == 0 ) {
-		//front = polygon;
-		return PLANESIDE_FRONT;
-	}
-	return PLANESIDE_CROSS;
-}
 #if 1
 
 static EPlaneSide PartitionNodeWithPlane(
@@ -1302,11 +1237,13 @@ static EPlaneSide PartitionNodeWithPlane(
 	const Vector4& nodePlane = tree.m_planes[ node.plane ];
 
 	// partition the operand
-	BspFaceID	frontPolys = BSP_NONE;
-	BspFaceID	backPolys = BSP_NONE;
+	BspFaceID	frontFaces = BSP_NONE;
+	BspFaceID	backFaces = BSP_NONE;
 	BspFaceID	coplanar = BSP_NONE;
-	const EPlaneSide side = PartitionPolygons2( partitioner, tree, node.faces, &frontPolys, &backPolys, &coplanar );
+	int			faceCounts[4] = {0};
 
+	const int totalCount = PartitionPolygons2( partitioner, tree, node.faces, &frontFaces, &backFaces, &coplanar, faceCounts );
+	const EPlaneSide side = ClassifyFaces( totalCount, faceCounts );
 
 	const float dot = Plane_GetNormal( partitioner ) * Plane_GetNormal( nodePlane );
 
@@ -1335,10 +1272,10 @@ static EPlaneSide PartitionNodeWithPlane(
 #if 0
 	else if ( side == PLANESIDE_FRONT )
 	{
-		mxASSERT2( frontPolys, "All the polygons of the node must be in front of the splitting splitPlane" );
+		mxASSERT2( frontFaces, "All the polygons of the node must be in front of the splitting splitPlane" );
 		mxASSERT2( coplanar == NULL, "Coplanar polys are not supported!" );
 
-		node->Faces = frontPolys;
+		node->Faces = frontFaces;
 
 		if ( colinearPlanes )
 		{
@@ -1373,10 +1310,10 @@ static EPlaneSide PartitionNodeWithPlane(
 
 	else if ( side == PLANESIDE_BACK )
 	{
-		mxASSERT2( backPolys, "All polygons of the node must be behind the splitting splitPlane" );
+		mxASSERT2( backFaces, "All polygons of the node must be behind the splitting splitPlane" );
 		mxASSERT2( coplanar == NULL, "Coplanar polys are not supported!" );
 
-		node->Faces = backPolys;
+		node->Faces = backFaces;
 
 		if ( colinearPlanes )
 		{
@@ -1417,10 +1354,10 @@ static EPlaneSide PartitionNodeWithPlane(
 		*back = NewNode( tree );
 
 		tree.m_nodes[ *front ].plane = node.plane;
-		tree.m_nodes[ *front ].faces = frontPolys;
+		tree.m_nodes[ *front ].faces = frontFaces;
 
 		tree.m_nodes[ *back ].plane = node.plane;
-		tree.m_nodes[ *back ].faces = backPolys;
+		tree.m_nodes[ *back ].faces = backFaces;
 
 
 		int partitioned_front_F = BSP_NONE;
@@ -1519,7 +1456,7 @@ UNDONE;
 
 void Tree::Subtract( const Tree& other )
 {
-	MergeSubtract( *this, 0, other, 0 );
+	//MergeSubtract( *this, 0, other, 0 );
 }
 #endif
 
