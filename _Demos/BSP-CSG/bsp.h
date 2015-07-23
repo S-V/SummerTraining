@@ -120,7 +120,7 @@ public:
 };
 
 typedef UINT16 BspNodeID;
-typedef UINT16 BspPolyID;
+typedef UINT16 BspFaceID;
 
 enum { BSP_NONE = (UINT16)~0 };
 
@@ -129,18 +129,18 @@ struct Node : public CStruct
 	UINT16		plane;	//«2 Hyperplane of the node (index into array of planes).
 	BspNodeID	front;	//«2 Index of the right child (positive subspace, in front of plane).
 	BspNodeID	back;	//«2 Index of the left child (negative subspace, behind the plane).
-	BspPolyID	faces;	//«2 linked list of polygons lying on this node's plane
+	BspFaceID	faces;	//«2 linked list of polygons lying on this node's plane
 public:
 	mxDECLARE_CLASS(Node,CStruct);
 	mxDECLARE_REFLECTION;
 };
-struct Poly : public CStruct
+struct Face : public CStruct
 {
 	TArray< Vertex >	vertices;
-	BspPolyID			next;
+	BspFaceID			next;
 	Vertex				buffer[8];	//«256 small embedded storage to avoid memory allocations
 public:
-	mxDECLARE_CLASS(Poly,CStruct);
+	mxDECLARE_CLASS(Face,CStruct);
 	mxDECLARE_REFLECTION;
 };
 
@@ -188,7 +188,7 @@ struct Tree : public CStruct
 {
 	TArray< Vector4 >	m_planes;	// plane equations (16 bytes per plane)
 	TArray< Node >		m_nodes;	// tree nodes (0 = root index)
-	TArray< Poly >		m_polys;
+	TArray< Face >		m_faces;	// convex polygons
 	//TArray< NodeData >	m_nodeData;
 public:
 	mxDECLARE_CLASS(Tree,CStruct);
@@ -223,10 +223,10 @@ public:
 	void CopyFrom( const Tree& other );
 	void Subtract( const Tree& other );
 
-	void GenerateMesh();
-
 	void Negate();
 	void Translate( const Float3& T );
+
+	void GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices );
 };
 
 // Special node ids.

@@ -128,49 +128,18 @@ ERet MyEntryPoint()
 
 	BSP::Vertex::init();
 
-	calcTangents(
-		g_planeVertices, BX_COUNTOF(g_planeVertices), BSP::Vertex::ms_decl,
-		g_planeIndices, BX_COUNTOF(g_planeIndices) );
 
 
 
-	BSP::Tree	operand;
-	{
-#if 0
-		BSP::Vertex cubeVertices[BX_COUNTOF(s_cubeVertices)];
-		for( int iVertex = 0; iVertex < BX_COUNTOF(s_cubeVertices); iVertex++ )
-		{
-			cubeVertices[iVertex].xyz.x = s_cubeVertices[iVertex].m_x;
-			cubeVertices[iVertex].xyz.y = s_cubeVertices[iVertex].m_y;
-			cubeVertices[iVertex].xyz.z = s_cubeVertices[iVertex].m_z;
-			cubeVertices[iVertex].N = s_cubeVertices[iVertex].m_normal;
-			cubeVertices[iVertex].T = s_cubeVertices[iVertex].m_tangent;
-			cubeVertices[iVertex].UV.x = Short_To_Normal(s_cubeVertices[iVertex].m_u);
-			cubeVertices[iVertex].UV.y = Short_To_Normal(s_cubeVertices[iVertex].m_v);
-		}
-
-		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
-			cubeVertices, BX_COUNTOF(cubeVertices), s_cubeIndices, BX_COUNTOF(s_cubeIndices)
-		);
-#else
-		TArray< BSP::Vertex >	cubeVertices;
-		TArray< UINT16 >		cubeIndices;
-		MakeBoxMesh( 1.0f, 1.0f, 1.0f, cubeVertices, cubeIndices );
-
-		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
-			cubeVertices.ToPtr(), cubeVertices.Num(), cubeIndices.ToPtr(), cubeIndices.Num()
-		);
-#endif
-		operand.Build( &enumerateMeshVertices );
-
-		BSP::Debug::PrintTree(operand);
-	}
-
-	BSP::Tree	temporary;
-
+	// Build a BSP tree for the destructible environment.
 
 	BSP::Tree	tree;
 	{
+		// Calculate tangent frames (needed for normal mapping).
+		calcTangents(
+			g_planeVertices, BX_COUNTOF(g_planeVertices), BSP::Vertex::ms_decl,
+			g_planeIndices, BX_COUNTOF(g_planeIndices) );
+
 		using namespace BSP;
 		struct EnumerateMeshVertices : ATriangleMeshInterface
 		{
@@ -190,7 +159,31 @@ ERet MyEntryPoint()
 		} enumerateMeshVertices;
 
 		tree.Build( &enumerateMeshVertices );
+
+		DBGOUT("\nWorld BSP tree:\n");
+		BSP::Debug::PrintTree(tree);
 	}
+
+	// Build a BSP tree for the subtractive mesh.
+
+	BSP::Tree	operand;
+	{
+		TArray< BSP::Vertex >	cubeVertices;
+		TArray< UINT16 >		cubeIndices;
+		MakeBoxMesh( 1.0f, 1.0f, 1.0f, cubeVertices, cubeIndices );
+
+		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
+			cubeVertices.ToPtr(), cubeVertices.Num(), cubeIndices.ToPtr(), cubeIndices.Num()
+		);
+		operand.Build( &enumerateMeshVertices );
+
+		DBGOUT("\nModel BSP tree:\n");
+		BSP::Debug::PrintTree(operand);
+	}
+
+
+
+
 
 	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
@@ -202,8 +195,16 @@ ERet MyEntryPoint()
 	bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );
 
 
-	int fireRate = 1; // shots per second
+	int fireRate = 10; // shots per second
 	int64_t lastTimeShot = 0;
+
+
+	// Temporary storage for storing intermediate results of CSG calculations.
+
+	BSP::Tree	temporary;
+
+	TArray< BSP::Vertex >	rawVertices;
+	TArray< UINT16 >		rawIndices;
 
 
 	// Imgui.
@@ -227,11 +228,11 @@ ERet MyEntryPoint()
 	entry::MouseState mouseState;
 	while (!entry::processEvents(width, height, debug, reset, &mouseState) )
 	{
-		int64_t now = bx::getHPCounter();
+		const int64_t now = bx::getHPCounter();
 		static int64_t last = now;
 		const int64_t frameTime = now - last;
 		last = now;
-		const double freq = double(bx::getHPFrequency() );
+		const double freq = double(bx::getHPFrequency() );	// clock rate, in Hertz
 		const double toMs = 1000.0/freq;
 		const float deltaTime = float(frameTime/freq);
 
@@ -336,9 +337,10 @@ ERet MyEntryPoint()
 		{
 			const int64_t timeElapsed = now - lastTimeShot;
 			double secondsElapsed = double(timeElapsed)/freq;
-			DBGOUT("secondsElapsed: %f", secondsElapsed);
+
 			if( secondsElapsed > (1.0f/fireRate) )
 			{
+				DBGOUT("Shooting");
 				lastTimeShot = now;
 
 				Float3 rayPos, lookAt, rayDir;
@@ -351,6 +353,8 @@ ERet MyEntryPoint()
 //					LogStream(LL_Info) << "Hit pos: " << lastHit.position;
 					temporary.CopyFrom( operand );
 					temporary.Translate( lastHit.position );
+					tree.GenerateMesh( rawVertices, rawIndices );
+					DBGOUT("GenerateMesh: %d vertices, %d indices", rawVertices.Num(), rawIndices.Num());
 					//tree.Subtract(operand);
 				}
 			}		
