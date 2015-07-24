@@ -35,6 +35,7 @@ float AABB_GetVolume( const AABB24& aabb );
 Float3 AABB_Center( const AABB24& aabb );
 Float3 AABB_Extent( const AABB24& aabb );	// returns half size
 Float3 AABB_FullSize( const AABB24& aabb );
+bool AABB_Intersect( const AABB24& a, const AABB24& b );
 float AABB_ClosestDistance( const AABB24& aabb, const Float3& point );
 bool AABB_ContainsPoint( const AABB24& aabb, const Float3& point );// includes touching
 bool AABB_ContainsPoint( const AABB24& aabb, const Float3& point, float epsilon );// includes touching

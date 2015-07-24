@@ -14,6 +14,8 @@ Efficient Boundary Extraction of BSP Solids Based on Clipping Operations
 
 http://www.me.mtu.edu/~rmdsouza/CSG_BSP.html
 */
+#include <Base/Base.h>
+#include <Core/VectorMath.h>
 #include "bsp.h"
 
 namespace BSP
@@ -1225,8 +1227,6 @@ int RayIntersect(BSPNode *node, Point p, Vector d, float tmin, float tmax, float
 }
 #endif
 
-#if 1
-
 EPlaneSide Tree::PartitionNodeWithPlane(
 	const Vector4& partitioner,
 	NodeID nodeId,
@@ -1469,27 +1469,189 @@ static NodeID CopySubTree( Tree & treeA, const Tree& treeB, NodeID iNodeB )
 	return subtreeId;
 }
 
+//static const AABB24 CalculateFaceBounds( const Tree& tree, const FaceID faces )
+//{
+//	AABB24 bounds;
+//	AABB24_Clear( &bounds );
+//
+//	FaceID iFace = faces;
+//	while( iFace != NIL_INDEX )
+//	{
+//		const Face& rFace = tree.m_faces[ iFace ];
+//
+//		for( UINT32 iVtx = 0; iVtx < rFace.vertices.Num(); iVtx++ )
+//		{
+//			AABB24_AddPoint( &bounds, rFace.vertices[iVtx].xyz );
+//		}
+//
+//		iFace = rFace.next;
+//	}
+//
+//	return bounds;
+//}
+static const AABB24 CalculateFaceBounds( const Face& rFace )
+{
+	AABB24 bounds;
+	AABB24_Clear( &bounds );
+	for( UINT32 iVtx = 0; iVtx < rFace.vertices.Num(); iVtx++ )
+	{
+		AABB24_AddPoint( &bounds, rFace.vertices[iVtx].xyz );
+	}
+	return bounds;
+}
+static void CalculateNodeBounds_R( const Tree& tree, const NodeID iNode, AABB24 * bounds )
+{
+	if( IS_INTERNAL( iNode ) )
+	{
+		const Node& rNode = tree.m_nodes[ iNode ];
+
+		FaceID iFace = rNode.faces;
+		while( iFace != NIL_INDEX )
+		{
+			const Face& rFace = tree.m_faces[ iFace ];
+
+			const AABB24 faceBounds = CalculateFaceBounds( rFace );
+
+			AABB24_AddAABB( bounds, faceBounds );
+
+			iFace = rFace.next;
+		}
+
+		CalculateNodeBounds_R( tree, rNode.front, bounds );
+		CalculateNodeBounds_R( tree, rNode.back, bounds );
+	}
+}
+static const AABB24 CalculateNodeBounds( const Tree& tree, const NodeID iNode )
+{
+	AABB24	bounds;
+	AABB24_Clear( &bounds );
+	CalculateNodeBounds_R( tree, iNode, &bounds );
+	return bounds;
+}
+
+#if 0
+static void ClipFacesWithConvexBrush_R( Tree & treeA, const NodeID iNodeA, const Tree& treeB, const NodeID iNodeB, const AABB24& boundsB )
+{
+	mxASSERT(IS_INTERNAL(iNodeA));
+	mxASSERT(IS_INTERNAL(iNodeB));
+	if( IS_INTERNAL( iNodeA ) && IS_INTERNAL( iNodeB ) )
+	{
+		Node& rNodeA = treeA.m_nodes[ iNodeA ];
+
+		FaceID iFaceA = rNodeA.faces;
+		while( iFaceA != NIL_INDEX )
+		{
+			const Face& rFaceA = treeA.m_faces[ iFaceA ];
+
+			const AABB24 faceBoundsA = CalculateFaceBounds( rFaceA );
+
+			if( AABB_Intersect( faceBoundsA, boundsB ) )
+			{
+				Vertex	buffer1[64];
+				Vertex	buffer2[64];
+
+				Face	frontPoly;
+				Face	backPoly;
+				frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
+				backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+
+				const EPlaneSide side = SplitConvexPolygonByPlane( rFaceA, frontPoly, backPoly, partitioner, epsilon );
+			}
+
+			iFaceA = rFaceA.next;
+		}
+	}
+}
+
+static void ClipFacesWithConvexBrush( Tree & treeA, const NodeID iNodeA, const Tree& treeB, const NodeID iNodeB )
+{
+	mxASSERT(IS_INTERNAL(iNodeA));
+	mxASSERT(IS_INTERNAL(iNodeB));
+	const AABB24 boundsB = CalculateNodeBounds( treeB, iNodeB );
+	ClipFacesWithConvexBrush_R( treeA, iNodeA, treeB, iNodeB, boundsB );
+}
+#endif
+
+#if 0
+static void ClipFacesWithConvexBrush_R(
+									   Tree & treeA, const FaceID facesA, FaceID *newFacesA,
+									   const Tree& treeB, const NodeID iNodeB, const AABB24& boundsB
+									   )
+{
+	mxASSERT(IS_INTERNAL(iNodeB));
+	if( IS_INTERNAL( iNodeB ) )
+	{
+		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
+		const Vector4& planeB = treeB.m_planes[ rNodeB.plane ];
+
+		FaceID iFaceA = *facesA;
+		while( iFaceA != NIL_INDEX )
+		{
+			const Face& rFaceA = treeA.m_faces[ iFaceA ];
+
+			const AABB24 faceBoundsA = CalculateFaceBounds( rFaceA );
+
+			if( AABB_Intersect( faceBoundsA, boundsB ) )
+			{
+				Vertex	buffer1[64];
+				Vertex	buffer2[64];
+
+				Face	frontPoly;
+				Face	backPoly;
+				frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
+				backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+
+				const EPlaneSide side = SplitConvexPolygonByPlane( rFaceA, frontPoly, backPoly, planeB );
+
+				if( frontPoly.vertices.Num() ) {
+					AddPolygon( frontPoly, treeA, facesA );
+				}
+				// discard the polygon behind the plane
+			}
+
+			iFaceA = rFaceA.next;
+		}
+	}
+}
+
+static void ClipFacesWithConvexBrush(
+									 Tree & treeA, const FaceID facesA, FaceID *newFacesA,
+									 const Tree& treeB, const NodeID iNodeB, const AABB24& boundsB
+									 )
+{
+	mxASSERT(IS_INTERNAL(iNodeB));
+	const AABB24 boundsB = CalculateNodeBounds( treeB, iNodeB );
+	ClipFacesWithConvexBrush_R( treeA, facesA, newFacesA, treeB, iNodeB, boundsB );
+}
+#endif
 // computes boolean A - B
 static void MergeSubtract( Tree & treeA, NodeID * iNodeA, Tree & treeB, const NodeID iNodeB )
 {
 	if( IS_INTERNAL( *iNodeA ) )
 	{
 		// this is an internal node
-		Node& node = treeA.m_nodes[ *iNodeA ];
-		const Vector4& plane = treeA.m_planes[ node.plane ];
+		Node& nodeA = treeA.m_nodes[ *iNodeA ];
+		const Vector4& plane = treeA.m_planes[ nodeA.plane ];
 
+		// Clip this node's polygons with the other tree.
+		const FaceID faceListA = nodeA.faces;
+		nodeA.faces = NIL_INDEX;
+//		ClipFacesWithConvexBrush( treeA, faceListA, &nodeA.faces, treeB, iNodeB );
+
+		// Partition the other tree and merge the first tree with the resulting pieces.
 		NodeID nodeB_front = NIL_INDEX;
 		NodeID nodeB_back = NIL_INDEX;
 		treeB.PartitionNodeWithPlane( plane, iNodeB, &nodeB_front, &nodeB_back );
 
-		MergeSubtract( treeA, &node.front, treeB, nodeB_front );
-		MergeSubtract( treeA, &node.back, treeB, nodeB_back );
+		MergeSubtract( treeA, &nodeA.front, treeB, nodeB_front );
+		MergeSubtract( treeA, &nodeA.back, treeB, nodeB_back );
 	}
 	else
 	{
 		// this is a leaf node
 		if( IS_SOLID_LEAF( *iNodeA ) )
 		{
+			//@todo: discard the old subtree
 			*iNodeA = CopySubTree( treeA, treeB, iNodeB );
 		}
 		// empty space - do nothing
@@ -1501,7 +1663,6 @@ void Tree::Subtract( Tree& other )
 	NodeID rootId = 0;
 	MergeSubtract( *this, &rootId, other, 0 );
 }
-#endif
 
 void Tree::CopyFrom( const Tree& other )
 {
@@ -1599,7 +1760,7 @@ static void GenerateMesh_R(
 	}
 }
 
-void Tree::GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices )
+void Tree::GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices ) const
 {
 	vertices.Empty();
 	indices.Empty();

@@ -132,10 +132,10 @@ typedef UINT16 FaceID;
 
 
 inline bool IS_LEAF( NodeID nodeID ) {
-	return (nodeID & (~0<<14)) != 0;
+	return (nodeID & (~0U<<14)) != 0;
 }
 inline bool IS_INTERNAL( NodeID nodeID ) {
-	return (nodeID & (~0<<14)) == 0;
+	return (nodeID & (~0U<<14)) == 0;
 }
 inline NodeID MAKE_LEAF( NODE_TYPE type ) {
 	return type<<14;
@@ -144,7 +144,7 @@ inline NODE_TYPE GET_TYPE( NodeID nodeID ) {
 	return NODE_TYPE((nodeID >> 14) & 3);
 }
 inline UINT16 GET_PAYLOAD( NodeID nodeID ) {
-	return nodeID & ~(~0<<14);
+	return nodeID & ~(~0U<<14);
 }
 inline bool IS_SOLID_LEAF( NodeID nodeID ) {
 	return GET_TYPE(nodeID) == SOLID_LEAF;
@@ -260,7 +260,7 @@ public:
 	void Negate();
 	void Translate( const Float3& T );
 
-	void GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices );
+	void GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices ) const;
 
 public:	// Internal functions:
 	int PartitionPolygons(

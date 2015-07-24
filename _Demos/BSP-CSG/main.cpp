@@ -11,19 +11,6 @@
 static bgfx::DynamicVertexBufferHandle g_dynamicVB = BGFX_INVALID_HANDLE;
 static bgfx::DynamicIndexBufferHandle g_dynamicIB = BGFX_INVALID_HANDLE;
 
-static BSP::Vertex g_planeVertices[4] =
-{
-	//          XYZ              |            N              | T |    U  |  V
-	BSP::Vertex( Float3_Set( -100.0f, 0.0f, -100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set(    0, 1.0f ) ),
-	BSP::Vertex( Float3_Set( -100.0f, 0.0f,  100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set(    0,    0 ) ),
-	BSP::Vertex( Float3_Set(  100.0f, 0.0f,  100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set( 1.0f,    0 ) ),
-	BSP::Vertex( Float3_Set(  100.0f, 0.0f, -100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set( 1.0f, 1.0f ) ),
-};
-
-static const UINT16 g_planeIndices[6] = {
-	0, 1, 2, 0, 2, 3,
-};
-
 void MakeBoxMesh(
 				 float length, float height, float depth,
 				 TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices
@@ -130,13 +117,19 @@ static void Subtract(
 				  const Float3& position,
 				  BSP::Tree & worldTree,
 				  const BSP::Tree& mesh,	// subtractive brush
-				  BSP::Tree & temporary,
-				  TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices
+				  BSP::Tree & temporary
 				  )
 {
 	temporary.CopyFrom( mesh );
 	temporary.Translate( position );
 	worldTree.Subtract( temporary );
+}
+
+static void GenerateMesh(
+						 const BSP::Tree& worldTree,
+						 TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices
+						 )
+{
 	worldTree.GenerateMesh( vertices, indices );
 	DBGOUT("GenerateMesh: %d vertices, %d indices", vertices.Num(), indices.Num());
 	UpdateRenderMesh( vertices.ToPtr(), vertices.Num(), indices.ToPtr(), indices.Num() );
@@ -155,52 +148,71 @@ ERet MyEntryPoint()
 
 
 
-
 	// Build a BSP tree for the destructible environment.
 
 	BSP::Tree	worldTree;
 	{
+		BSP::Vertex planeVertices[4] =
+		{
+			//          XYZ              |            N              | T |    U  |  V
+			BSP::Vertex( Float3_Set( -100.0f, 0.0f, -100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set(    0, 1.0f ) ),
+			BSP::Vertex( Float3_Set( -100.0f, 0.0f,  100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set(    0,    0 ) ),
+			BSP::Vertex( Float3_Set(  100.0f, 0.0f,  100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set( 1.0f,    0 ) ),
+			BSP::Vertex( Float3_Set(  100.0f, 0.0f, -100.0f ), packF4u( 0.0f, 1.0f, 0.0f ), 0,  Float2_Set( 1.0f, 1.0f ) ),
+		};
+
+		const UINT16 planeIndices[6] = {
+			0, 1, 2, 0, 2, 3,
+		};
+
 		// Calculate tangent frames (needed for normal mapping).
 		calcTangents(
-			g_planeVertices, BX_COUNTOF(g_planeVertices), BSP::Vertex::ms_decl,
-			g_planeIndices, BX_COUNTOF(g_planeIndices) );
+			planeVertices, BX_COUNTOF(planeVertices), BSP::Vertex::ms_decl,
+			planeIndices, BX_COUNTOF(planeIndices) );
 
-		using namespace BSP;
-		struct EnumerateMeshVertices : ATriangleMeshInterface
-		{
-			virtual void ProcessAllTriangles( ATriangleIndexCallback* callback ) override
-			{
-				callback->ProcessTriangle(
-					g_planeVertices[ g_planeIndices[0] ],
-					g_planeVertices[ g_planeIndices[1] ],
-					g_planeVertices[ g_planeIndices[2] ]
-					);
-				callback->ProcessTriangle(
-					g_planeVertices[ g_planeIndices[3] ],
-					g_planeVertices[ g_planeIndices[4] ],
-					g_planeVertices[ g_planeIndices[5] ]
-					);
-			}
-		} enumerateMeshVertices;
-
+		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
+			planeVertices, BX_COUNTOF(planeVertices), planeIndices, BX_COUNTOF(planeIndices)
+		);
 		worldTree.Build( &enumerateMeshVertices );
 
 		DBGOUT("\nWorld BSP tree:\n");
 		BSP::Debug::PrintTree(worldTree);
 	}
 
+
+	// Temporary storage for storing intermediate results of CSG calculations to reduce memory allocations.
+
+	BSP::Tree	temporary;
+
+	TArray< BSP::Vertex >	rawVertices;
+	TArray< UINT16 >		rawIndices;
+
+
+
 	// Build a BSP tree for the subtractive mesh.
 
 	BSP::Tree	operand;
 	{
-		TArray< BSP::Vertex >	cubeVertices;
-		TArray< UINT16 >		cubeIndices;
-		MakeBoxMesh( 1.0f, 1.0f, 1.0f, cubeVertices, cubeIndices );
+		MakeBoxMesh( 1.0f, 1.0f, 1.0f, rawVertices, rawIndices );
+
+		{
+			Float4x4 scaleMatrix = Matrix_Scaling( 2, 2, 2 );
+			Float4x4 scaleMatrixIT = Matrix_Transpose( Matrix_Inverse( scaleMatrix ) );
+
+			for( UINT i = 0; i < rawVertices.Num(); ++i )
+			{
+				rawVertices[i].xyz = Matrix_TransformPoint( scaleMatrix, rawVertices[i].xyz );
+				//scaleMatrixIT.TransformNormal( vertices[i].Tangent );
+			}
+		}
 
 		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
-			cubeVertices.ToPtr(), cubeVertices.Num(), cubeIndices.ToPtr(), cubeIndices.Num()
+			rawVertices.ToPtr(), rawVertices.Num(), rawIndices.ToPtr(), rawIndices.Num()
 		);
 		operand.Build( &enumerateMeshVertices );
+
+		rawVertices.Empty();
+		rawIndices.Empty();
 
 		DBGOUT("\nModel BSP tree:\n");
 		BSP::Debug::PrintTree(operand);
@@ -213,32 +225,39 @@ ERet MyEntryPoint()
 	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
 
-	UpdateRenderMesh( g_planeVertices, BX_COUNTOF(g_planeVertices), g_planeIndices, BX_COUNTOF(g_planeIndices) );
+	
+
 
 	int fireRate = 10; // shots per second
 	int64_t lastTimeShot = 0;
 
 
-	// Temporary storage for storing intermediate results of CSG calculations to reduce memory allocations.
-
-	BSP::Tree	temporary;
-
-	TArray< BSP::Vertex >	rawVertices;
-	TArray< UINT16 >		rawIndices;
 
 
 
+#if 1
 	{
 		Subtract(
 			Float3_Set(0,-1,0),
 			worldTree,
 			operand,
-			temporary,
-			rawVertices, rawIndices
+			temporary
 		);
 		DBGOUT("\nWorld tree after CSG:\n");
 		BSP::Debug::PrintTree(worldTree);
 	}
+#endif
+
+	//worldTree.CopyFrom( operand );
+
+	GenerateMesh(
+		worldTree,
+		rawVertices, rawIndices
+	);
+
+
+
+
 
 
 	// Imgui.
@@ -390,7 +409,11 @@ ERet MyEntryPoint()
 						lastHit.position,
 						worldTree,
 						operand,
-						temporary,
+						temporary
+						
+					);
+					GenerateMesh(
+						worldTree,
 						rawVertices, rawIndices
 					);
 				}

@@ -108,6 +108,14 @@ Float3 AABB_FullSize( const AABB24& aabb )
 {
 	return aabb.max_point - aabb.min_point;
 }
+bool AABB_Intersect( const AABB24& a, const AABB24& b )
+{
+	bool overlap = true;
+	overlap = (a.min_point.x > b.max_point.x || a.max_point.x < b.min_point.x) ? false : overlap;
+	overlap = (a.min_point.z > b.max_point.z || a.max_point.z < b.min_point.z) ? false : overlap;
+	overlap = (a.min_point.y > b.max_point.y || a.max_point.y < b.min_point.y) ? false : overlap;
+	return overlap;
+}
 float AABB_ClosestDistance( const AABB24& aabb, const Float3& point )
 {
 	if( AABB_ContainsPoint( aabb, point ) ) {
