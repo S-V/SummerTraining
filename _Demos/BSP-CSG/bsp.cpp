@@ -1234,7 +1234,6 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 	NodeID *back
 	)
 {
-	//mxASSERT( nodeId >= 0 );
 	if( IS_LEAF( nodeId ) ) {
 		*front = nodeId;
 		*back = nodeId;
@@ -1383,9 +1382,6 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 
 		m_nodes[ *back ].front = partitioned_front_B;
 		m_nodes[ *back ].back = partitioned_back_B;
-
-		mxASSERT(m_planes.IsValidIndex(m_nodes[ *front ].plane));
-		mxASSERT(m_planes.IsValidIndex(m_nodes[ *back ].plane));
 	}
 
 	return side;
@@ -1396,23 +1392,23 @@ static int AppendTree( Tree & treeA, const Tree& treeB )
 {
 	const int planeOffset = treeA.m_planes.Num();
 	const int nodeOffset = treeA.m_nodes.Num();
-	const int faceOffset = treeA.m_polys.Num();
+	const int faceOffset = treeA.m_faces.Num();
 
 	const int newPlanes = treeB.m_planes.Num();
 	const int newNodes = treeB.m_nodes.Num();
-	const int newFaces = treeB.m_polys.Num();
+	const int newFaces = treeB.m_faces.Num();
 
 	treeA.m_planes.ReserveMore( newPlanes );
 	treeA.m_nodes.ReserveMore( newNodes );
-	treeA.m_polys.ReserveMore( newFaces );
+	treeA.m_faces.ReserveMore( newFaces );
 
 	for( UINT32 iPlane = 0; iPlane < m_planes.Num(); iPlane++ )
 	{
 		m_planes[iPlane] = Plane_Translate( m_planes[iPlane], T );
 	}
-	for( UINT32 iPoly = 0; iPoly < m_polys.Num(); iPoly++ )
+	for( UINT32 iPoly = 0; iPoly < m_faces.Num(); iPoly++ )
 	{
-		Poly & poly = m_polys[iPoly];
+		Poly & poly = m_faces[iPoly];
 		for( UINT32 iVtx = 0; iVtx < poly.vertices.Num(); iVtx++ )
 		{
 			poly.vertices[iVtx].xyz += T;
@@ -1442,6 +1438,7 @@ static NodeID CopySubTree( Tree & treeA, const Tree& treeB, NodeID iNodeB )
 
 		rNodeA.plane = iNewPlaneA;
 
+#if 0
 		rNodeA.faces = NIL_INDEX;
 
 		FaceID iFaceB = rNodeB.faces;
@@ -1458,6 +1455,7 @@ static NodeID CopySubTree( Tree & treeA, const Tree& treeB, NodeID iNodeB )
 
 			iFaceB = rFaceB.next;
 		}
+#endif
 
 		treeA.m_nodes[ iNewNodeA ].front = CopySubTree( treeA, treeB, rNodeB.front );
 		treeA.m_nodes[ iNewNodeA ].back = CopySubTree( treeA, treeB, rNodeB.back );
@@ -1635,7 +1633,7 @@ static void MergeSubtract( Tree & treeA, NodeID * iNodeA, Tree & treeB, const No
 
 		// Clip this node's polygons with the other tree.
 		const FaceID faceListA = nodeA.faces;
-		nodeA.faces = NIL_INDEX;
+//		nodeA.faces = NIL_INDEX;
 //		ClipFacesWithConvexBrush( treeA, faceListA, &nodeA.faces, treeB, iNodeB );
 
 		// Partition the other tree and merge the first tree with the resulting pieces.
@@ -1652,7 +1650,7 @@ static void MergeSubtract( Tree & treeA, NodeID * iNodeA, Tree & treeB, const No
 		if( IS_SOLID_LEAF( *iNodeA ) )
 		{
 			//@todo: discard the old subtree
-			*iNodeA = CopySubTree( treeA, treeB, iNodeB );
+			//*iNodeA = CopySubTree( treeA, treeB, iNodeB );
 		}
 		// empty space - do nothing
 	}
@@ -1668,31 +1666,25 @@ void Tree::CopyFrom( const Tree& other )
 {
 	m_planes = other.m_planes;
 	m_nodes = other.m_nodes;
-	m_faces = other.m_faces;
-	//const int planeOffset = treeA.m_planes.Num();
-	//const int nodeOffset = treeA.m_nodes.Num();
-	//const int faceOffset = treeA.m_polys.Num();
 
-	//const int newPlanes = treeB.m_planes.Num();
-	//const int newNodes = treeB.m_nodes.Num();
-	//const int newFaces = treeB.m_polys.Num();
+	//const int newPlanes = other.m_planes.Num();
+	//const int newNodes = other.m_nodes.Num();
+	const int newFaces = other.m_faces.Num();
 
-	//m_planes.Set( newPlanes );
-	//m_nodes.ReserveMore( newNodes );
-	//m_polys.ReserveMore( newFaces );
+	m_faces.SetNum( newFaces );
 
-	//for( UINT32 iPlane = 0; iPlane < m_planes.Num(); iPlane++ )
-	//{
-	//	m_planes[iPlane] = Plane_Translate( m_planes[iPlane], T );
-	//}
-	//for( UINT32 iPoly = 0; iPoly < m_polys.Num(); iPoly++ )
-	//{
-	//	Poly & poly = m_polys[iPoly];
-	//	for( UINT32 iVtx = 0; iVtx < poly.vertices.Num(); iVtx++ )
-	//	{
-	//		poly.vertices[iVtx].xyz += T;
-	//	}
-	//}
+	for( UINT32 iFace = 0; iFace < other.m_faces.Num(); iFace++ )
+	{
+		const Face& source = other.m_faces[ iFace ];
+		Face &dest = m_faces[iFace];
+		dest.next = source.next;
+		DBGOUT("next: %d", source.next);
+		dest.vertices.SetNum( source.vertices.Num() );
+		for( UINT32 iVtx = 0; iVtx < source.vertices.Num(); iVtx++ )
+		{
+			dest.vertices[iVtx] = source.vertices[iVtx];
+		}
+	}
 }
 
 void Tree::Negate()

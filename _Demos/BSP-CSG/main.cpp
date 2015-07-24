@@ -123,6 +123,9 @@ static void Subtract(
 	temporary.CopyFrom( mesh );
 	temporary.Translate( position );
 	worldTree.Subtract( temporary );
+
+	DBGOUT("\nBSP tree after CSG:\n");
+	BSP::Debug::PrintTree(worldTree);
 }
 
 static void GenerateMesh(
@@ -196,7 +199,7 @@ ERet MyEntryPoint()
 		MakeBoxMesh( 1.0f, 1.0f, 1.0f, rawVertices, rawIndices );
 
 		{
-			Float4x4 scaleMatrix = Matrix_Scaling( 2, 2, 2 );
+			Float4x4 scaleMatrix = Matrix_Scaling( 20, 20, 20 );
 			Float4x4 scaleMatrixIT = Matrix_Transpose( Matrix_Inverse( scaleMatrix ) );
 
 			for( UINT i = 0; i < rawVertices.Num(); ++i )
@@ -235,7 +238,7 @@ ERet MyEntryPoint()
 
 
 
-#if 1
+#if 0
 	{
 		Subtract(
 			Float3_Set(0,-1,0),
