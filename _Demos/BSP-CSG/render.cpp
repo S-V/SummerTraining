@@ -407,6 +407,7 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 	const uint32_t dim = 11;
 	const float offset = (float(dim-1) * 3.0f) * 0.5f;
 
+#if 0
 	// Draw into geometry pass.
 	for (uint32_t yy = 0; yy < dim; ++yy)
 	{
@@ -462,6 +463,7 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 			bgfx::submit(RENDER_PASS_GEOMETRY_ID);
 		}
 	}
+#endif
 
 	// Draw lights into light buffer.
 	if(0)

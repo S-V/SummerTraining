@@ -209,6 +209,15 @@ ERet MyEntryPoint()
 			}
 		}
 
+		{
+			const int numTriangles = rawIndices.Num() / 3;
+			for( int i = 0; i < numTriangles; i++ )
+			{
+				UINT16 * tri = rawIndices.ToPtr() + i*3;
+				TSwap( tri[0], tri[2] );
+			}
+		}
+
 		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
 			rawVertices.ToPtr(), rawVertices.Num(), rawIndices.ToPtr(), rawIndices.Num()
 		);
@@ -238,20 +247,29 @@ ERet MyEntryPoint()
 
 
 
-#if 0
+#if 1
 	{
-		Subtract(
-			Float3_Set(0,-1,0),
-			worldTree,
-			operand,
-			temporary
-		);
-		DBGOUT("\nWorld tree after CSG:\n");
+		Float3 pos = Float3_Set(0,-5,0);
+#if 0
+		{
+			Subtract(
+				pos,
+				worldTree,
+				operand,
+				temporary
+				);
+			DBGOUT("\nWorld tree after CSG:\n");
+			BSP::Debug::PrintTree(worldTree);
+		}
+#else
+		temporary.CopyFrom( operand );
+		temporary.Translate( pos );
+		//worldTree.CopyFrom( temporary );
+		worldTree.m_nodes[0].back = BSP::CopySubTree(worldTree, temporary, 0);
 		BSP::Debug::PrintTree(worldTree);
+#endif
 	}
 #endif
-
-	//worldTree.CopyFrom( operand );
 
 	GenerateMesh(
 		worldTree,
@@ -355,6 +373,7 @@ ERet MyEntryPoint()
 			bgfx::setState(0
 				| BGFX_STATE_RGB_WRITE
 				| BGFX_STATE_ALPHA_WRITE
+				| BGFX_STATE_CULL_CCW
 				| BGFX_STATE_DEPTH_WRITE
 				| BGFX_STATE_DEPTH_TEST_LESS
 				| BGFX_STATE_MSAA

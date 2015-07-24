@@ -1229,7 +1229,7 @@ int RayIntersect(BSPNode *node, Point p, Vector d, float tmin, float tmax, float
 
 EPlaneSide Tree::PartitionNodeWithPlane(
 	const Vector4& partitioner,
-	NodeID nodeId,
+	const NodeID nodeId,
 	NodeID *front,
 	NodeID *back
 	)
@@ -1358,17 +1358,17 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 		// Split both children of the node.
 
 		// Create two new nodes resulting from the partitioning.
-		*front = NewNode( *this );
-		*back = NewNode( *this );
+		const NodeID newFront = NewNode( *this );
+		const NodeID newBack = NewNode( *this );
 
-		m_nodes[ *front ].plane = iPlaneIndex;
-		m_nodes[ *front ].faces = frontFaces;
+		m_nodes[ newFront ].plane = iPlaneIndex;
+		m_nodes[ newFront ].faces = frontFaces;
 
-		m_nodes[ *back ].plane = iPlaneIndex;
-		m_nodes[ *back ].faces = backFaces;
+		m_nodes[ newBack ].plane = iPlaneIndex;
+		m_nodes[ newBack ].faces = backFaces;
 
 
-		NodeID partitioned_front_F = NIL_INDEX;
+		NodeID	partitioned_front_F = NIL_INDEX;
 		NodeID	partitioned_front_B = NIL_INDEX;
 
 		NodeID	partitioned_back_F = NIL_INDEX;
@@ -1377,11 +1377,14 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 		PartitionNodeWithPlane( partitioner, m_nodes[ nodeId ].front, &partitioned_front_F, &partitioned_front_B );
 		PartitionNodeWithPlane( partitioner, m_nodes[ nodeId ].back, &partitioned_back_F, &partitioned_back_B );
 
-		m_nodes[ *front ].front = partitioned_front_F;
-		m_nodes[ *front ].back = partitioned_back_F;
+		m_nodes[ newFront ].front = partitioned_front_F;
+		m_nodes[ newFront ].back = partitioned_back_F;
 
-		m_nodes[ *back ].front = partitioned_front_B;
-		m_nodes[ *back ].back = partitioned_back_B;
+		m_nodes[ newBack ].front = partitioned_front_B;
+		m_nodes[ newBack ].back = partitioned_back_B;
+
+		*front = newFront;
+		*back = newBack;
 	}
 
 	return side;
@@ -1421,10 +1424,13 @@ static int AppendTree( Tree & treeA, const Tree& treeB )
 #endif
 
 // treeA <- (treeB, nodeB)
-static NodeID CopySubTree( Tree & treeA, const Tree& treeB, NodeID iNodeB )
+NodeID CopySubTree(
+				   Tree & treeA,
+				   const Tree& treeB, const NodeID iNodeB
+				   )
 {
 	DBGOUT("CopySubTree: %d",GET_PAYLOAD(iNodeB));
-	NodeID subtreeId = 0;
+	NodeID newRootId = 0;
 	if( IS_INTERNAL( iNodeB ) )
 	{
 		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
@@ -1433,12 +1439,12 @@ static NodeID CopySubTree( Tree & treeA, const Tree& treeB, NodeID iNodeB )
 		const int iNewPlaneA = treeA.m_planes.Num();
 		treeA.m_planes.Add( rPlaneB );
 
-		const NodeID iNewNodeA = NewNode( treeA );
-		Node &rNodeA = treeA.m_nodes[ iNewNodeA ];
+		newRootId = NewNode( treeA );
+		Node &rNodeA = treeA.m_nodes[ newRootId ];
 
 		rNodeA.plane = iNewPlaneA;
 
-#if 0
+#if 1
 		rNodeA.faces = NIL_INDEX;
 
 		FaceID iFaceB = rNodeB.faces;
@@ -1457,14 +1463,14 @@ static NodeID CopySubTree( Tree & treeA, const Tree& treeB, NodeID iNodeB )
 		}
 #endif
 
-		treeA.m_nodes[ iNewNodeA ].front = CopySubTree( treeA, treeB, rNodeB.front );
-		treeA.m_nodes[ iNewNodeA ].back = CopySubTree( treeA, treeB, rNodeB.back );
+		treeA.m_nodes[ newRootId ].front = CopySubTree( treeA, treeB, rNodeB.front );
+		treeA.m_nodes[ newRootId ].back = CopySubTree( treeA, treeB, rNodeB.back );
 	}
 	else
 	{
-		subtreeId = iNodeB;
+		newRootId = iNodeB;
 	}
-	return subtreeId;
+	return newRootId;
 }
 
 //static const AABB24 CalculateFaceBounds( const Tree& tree, const FaceID faces )
@@ -1623,43 +1629,52 @@ static void ClipFacesWithConvexBrush(
 }
 #endif
 // computes boolean A - B
-static void MergeSubtract( Tree & treeA, NodeID * iNodeA, Tree & treeB, const NodeID iNodeB )
+static NodeID MergeSubtract( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID iNodeB )
 {
-	if( IS_INTERNAL( *iNodeA ) )
+	if( IS_INTERNAL( iNodeA ) )
 	{
-		// this is an internal node
-		Node& nodeA = treeA.m_nodes[ *iNodeA ];
-		const Vector4& plane = treeA.m_planes[ nodeA.plane ];
+		Node& nodeA = treeA.m_nodes[ iNodeA ];
+		const UINT16 planeA = nodeA.plane;
+		const Vector4& plane = treeA.m_planes[ planeA ];
 
 		// Clip this node's polygons with the other tree.
 		const FaceID faceListA = nodeA.faces;
 //		nodeA.faces = NIL_INDEX;
 //		ClipFacesWithConvexBrush( treeA, faceListA, &nodeA.faces, treeB, iNodeB );
 
+		const NodeID nodeA_front = nodeA.front;
+		const NodeID nodeA_back = nodeA.back;
+NODE_TYPE tf0 = GET_TYPE(nodeA_front);
+NODE_TYPE tb0 = GET_TYPE(nodeA_back);
 		// Partition the other tree and merge the first tree with the resulting pieces.
 		NodeID nodeB_front = NIL_INDEX;
 		NodeID nodeB_back = NIL_INDEX;
-		treeB.PartitionNodeWithPlane( plane, iNodeB, &nodeB_front, &nodeB_back );
+		const EPlaneSide side = treeB.PartitionNodeWithPlane( plane, iNodeB, &nodeB_front, &nodeB_back );
 
-		MergeSubtract( treeA, &nodeA.front, treeB, nodeB_front );
-		MergeSubtract( treeA, &nodeA.back, treeB, nodeB_back );
+		const NodeID newNodeA_front = MergeSubtract( treeA, nodeA_front, treeB, nodeB_front );
+		const NodeID newNodeA_back = MergeSubtract( treeA, nodeA_back, treeB, nodeB_back );
+NODE_TYPE tf1 = GET_TYPE(newNodeA_front);
+NODE_TYPE tb1 = GET_TYPE(newNodeA_back);
+		nodeA = treeA.m_nodes[ iNodeA ];
+		treeA.m_nodes[ iNodeA ].front = newNodeA_front;
+		treeA.m_nodes[ iNodeA ].back = newNodeA_back;
 	}
 	else
 	{
 		// this is a leaf node
-		if( IS_SOLID_LEAF( *iNodeA ) )
+		if( IS_SOLID_LEAF( iNodeA ) )
 		{
 			//@todo: discard the old subtree
-			//*iNodeA = CopySubTree( treeA, treeB, iNodeB );
+			return CopySubTree( treeA, treeB, iNodeB );
 		}
 		// empty space - do nothing
 	}
+	return iNodeA;
 }
 
 void Tree::Subtract( Tree& other )
 {
-	NodeID rootId = 0;
-	MergeSubtract( *this, &rootId, other, 0 );
+	NodeID rootId = MergeSubtract( *this, 0, other, 0 );
 }
 
 void Tree::CopyFrom( const Tree& other )
@@ -1761,7 +1776,7 @@ void Tree::GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indi
 
 namespace Debug
 {
-	static int CalculateFaceCount( const Tree& tree, FaceID faces )
+	static int CalculateFaceCount( const Tree& tree, const FaceID faces )
 	{
 		int result = 0;
 		FaceID iFaceId = faces;
@@ -1773,7 +1788,7 @@ namespace Debug
 		}
 		return result;
 	}
-	static const String32 NodeID_To_String( NodeID nodeIndex )
+	static const String32 NodeID_To_String( const NodeID nodeIndex )
 	{
 		String32 result;
 		if( IS_LEAF(nodeIndex) ) {
@@ -1783,17 +1798,20 @@ namespace Debug
 		}
 		return result;
 	}
-	static void PrintTree_R( const Tree& tree, INT16 nodeIndex, int depth )
+	static void PrintTree_R( const Tree& tree, const NodeID nodeIndex, int depth )
 	{
 		LogStream log(LL_Debug);
 		log.Repeat('\t', depth);
 
-		if( !IS_LEAF( nodeIndex ) )
+		if( IS_INTERNAL( nodeIndex ) )
 		{
 			const Node& node = tree.m_nodes[ nodeIndex ];
 			const Vector4& plane = tree.m_planes[ node.plane ];
 
-			log << "Node[" << nodeIndex << "]: neg=" << NodeID_To_String(node.back) << ", pos=" << NodeID_To_String(node.front) << ", faces: " << CalculateFaceCount(tree, node.faces);
+			log
+				<< "Node[" << nodeIndex << "]: neg=" << NodeID_To_String(node.back) << ", pos=" << NodeID_To_String(node.front)
+				<< ", faces: " << CalculateFaceCount(tree, node.faces);
+
 			log.Flush();
 
 			PrintTree_R( tree, node.back, depth+1 );
@@ -1806,7 +1824,12 @@ namespace Debug
 	}
 	void PrintTree( const Tree& tree )
 	{
-		PrintTree_R(tree, 0, 0);
+		LogStream(LL_Debug)
+			<< tree.m_nodes.Num()
+			<< " nodes, " << tree.m_planes.Num()
+			<< " planes, " << tree.m_faces.Num() << " faces"
+			;
+		PrintTree_R( tree, 0, 0 );
 	}
 }//namespace Debug
 

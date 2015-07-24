@@ -114,8 +114,8 @@ public:
 		for( int i = 0; i < numTriangles; i++ )
 		{
 			const INDEX* tri = m_indices + i*3;
-			//callback->ProcessTriangle( m_vertices[tri[0]], m_vertices[tri[1]], m_vertices[tri[2]] );
-			callback->ProcessTriangle( m_vertices[tri[2]], m_vertices[tri[1]], m_vertices[tri[0]] );
+			callback->ProcessTriangle( m_vertices[tri[0]], m_vertices[tri[1]], m_vertices[tri[2]] );
+			//callback->ProcessTriangle( m_vertices[tri[2]], m_vertices[tri[1]], m_vertices[tri[0]] );
 		}
 	}
 };
@@ -275,13 +275,13 @@ public:	// Internal functions:
 
 	EPlaneSide Tree::PartitionNodeWithPlane(
 		const Vector4& partitioner,
-		NodeID nodeId,
+		const NodeID nodeId,
 		NodeID *front,
 		NodeID *back
 	);
 };
 
-enum { BSP_MAX_NODES = (1<<14) };
+enum { BSP_MAX_NODES = (1U<<14)-1 };
 enum { BSP_MAX_DEPTH = 32 };	// size of temporary stack storage (we try to avoid recursion)
 enum { BSP_MAX_PLANES = MAX_UINT16-1 };	// maximum allowed number of planes in a single tree
 enum { BSP_MAX_POLYS = MAX_UINT16-1 };
@@ -312,6 +312,11 @@ public:
 		planeEpsilon = 0.017f;
 	}
 };
+
+NodeID CopySubTree(
+				   Tree & treeA,
+				   const Tree& treeB, const NodeID iNodeB
+				   );
 
 namespace Debug
 {
