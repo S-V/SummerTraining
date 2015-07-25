@@ -262,21 +262,25 @@ public:
 	void Negate();
 	void Translate( const Float3& T );
 
-	void GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices ) const;
+	void GenerateMesh(
+		TArray< BSP::Vertex > &vertices,
+		TArray< UINT16 > &indices,
+		const NodeID start = 0
+	) const;
 
 public:	// Internal functions:
 
 	int PartitionPolygons(
 		const Vector4& partitioner,
-		const FaceID polygons,
-		FaceID *frontFaces,
-		FaceID *backFaces,
-		FaceID *coplanar,
+		const FaceID polygons,	// linked list
+		FaceID *frontFaces,	// linked list
+		FaceID *backFaces,	// linked list
+		FaceID *coplanar,	// linked list
 		int faceCounts[4],	// EPlaneSide
 		const float epsilon = 0.13f
 	);
 
-	EPlaneSide Tree::PartitionNodeWithPlane(
+	EPlaneSide PartitionNodeWithPlane(
 		const Vector4& partitioner,
 		const NodeID nodeId,
 		NodeID *front,
@@ -294,6 +298,9 @@ public:	// Internal functions:
 		const Vector4& plane
 	);
 #endif
+
+	NodeID NewNode();
+	FaceID AddPolygon( const Vertex* points, const int numPoints, FaceID * head );
 };
 
 enum { BSP_MAX_NODES = (1U<<14)-1 };
@@ -335,7 +342,7 @@ NodeID CopySubTree(
 
 namespace Debug
 {
-	void PrintTree( const Tree& tree );
+	void PrintTree( const Tree& tree, const NodeID start = 0 );
 	int CalculateFaceCount( const Tree& tree, const FaceID faces );
 }//namespace Debug
 

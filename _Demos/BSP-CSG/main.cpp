@@ -1,12 +1,13 @@
-//based on
 /*
- * Copyright 2011-2015 Branimir Karadzic. All rights reserved.
- * License: http://www.opensource.org/licenses/BSD-2-Clause
- */
+stolen from:
+https://github.com/299299/NagaGame/blob/master/Source/Game/Engine/Graphics/DebugDraw.cpp
+*/
 #include <Base/Base.h>
 #include <Base/Util/LogUtil.h>
+#include <Base/Util/Color.h>
 #include "render.h"
 #include "bsp.h"
+#include "debug_draw.h"
 
 static bgfx::DynamicVertexBufferHandle g_dynamicVB = BGFX_INVALID_HANDLE;
 static bgfx::DynamicIndexBufferHandle g_dynamicIB = BGFX_INVALID_HANDLE;
@@ -70,6 +71,7 @@ void MakeBoxMesh(
 
 	//	for( UINT i = 0; i < NUM_VERTICES; ++i )
 	//	{
+	//	vertices[i].xyz = Matrix_TransformPoint( scaleMatrix, vertices[i].xyz );
 	//		scaleMatrixIT.TransformNormal( vertices[i].Normal );
 	//		scaleMatrixIT.TransformNormal( vertices[i].Tangent );
 	//	}
@@ -129,11 +131,11 @@ static void Subtract(
 }
 
 static void GenerateMesh(
-						 const BSP::Tree& worldTree,
+						 const BSP::Tree& worldTree, const BSP::NodeID start,
 						 TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices
 						 )
 {
-	worldTree.GenerateMesh( vertices, indices );
+	worldTree.GenerateMesh( vertices, indices, start );
 	DBGOUT("GenerateMesh: %d vertices, %d indices", vertices.Num(), indices.Num());
 	UpdateRenderMesh( vertices.ToPtr(), vertices.Num(), indices.ToPtr(), indices.Num() );
 }
@@ -150,6 +152,9 @@ ERet MyEntryPoint()
 
 	Renderer	renderer;
 	mxDO(renderer.Initialize());
+
+	DebugDrawManager	debugDraw;
+	debugDraw.init( renderer.debugProgram );
 
 	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
@@ -197,22 +202,22 @@ ERet MyEntryPoint()
 
 
 
+	// for testing
+	BSP::Tree	largeBox;
+	{
+		MakeBoxMesh( 50.0f, 50.0f, 50.0f, rawVertices, rawIndices );
+		BSP::TProcessTriangles< BSP::Vertex, UINT16 > enumerateMeshVertices(
+			rawVertices.ToPtr(), rawVertices.Num(), rawIndices.ToPtr(), rawIndices.Num()
+		);
+		largeBox.Build( &enumerateMeshVertices );
+	}
+
+
 	// Build a BSP tree for the subtractive mesh.
 
 	BSP::Tree	operand;
 	{
-		MakeBoxMesh( 1.0f, 1.0f, 1.0f, rawVertices, rawIndices );
-
-		{
-			Float4x4 scaleMatrix = Matrix_Scaling( 20, 20, 20 );
-			Float4x4 scaleMatrixIT = Matrix_Transpose( Matrix_Inverse( scaleMatrix ) );
-
-			for( UINT i = 0; i < rawVertices.Num(); ++i )
-			{
-				rawVertices[i].xyz = Matrix_TransformPoint( scaleMatrix, rawVertices[i].xyz );
-				//scaleMatrixIT.TransformNormal( vertices[i].Tangent );
-			}
-		}
+		MakeBoxMesh( 50.0f, 50.0f, 50.0f, rawVertices, rawIndices );
 
 		// flip winding to turn the model inside out
 		{
@@ -253,7 +258,7 @@ ERet MyEntryPoint()
 
 #if 1
 	{
-		Float3 pos = Float3_Set(0,-0,0);
+		Float3 pos = Float3_Set(0,-10,0);
 #if 1
 		Subtract(
 			pos,
@@ -266,23 +271,42 @@ ERet MyEntryPoint()
 		temporary.Translate( pos );
 		//worldTree.CopyFrom( temporary );
 		worldTree.m_nodes[0].back = BSP::CopySubTree(worldTree, temporary, 0);
-		BSP::Debug::PrintTree(worldTree);
 #endif
+		BSP::Debug::PrintTree(worldTree);
 	}
 #endif
 
 
 
 
-
-
-
-
-
+#if 1
 	GenerateMesh(
-		worldTree,
+		worldTree, 0,
 		rawVertices, rawIndices
 	);
+#else
+	{
+		//temporary.CopyFrom( largeBox );
+		worldTree.CopyFrom( largeBox );
+
+		Vector4 plane = { 1, 0, 0, 0 };
+		BSP::NodeID front, back;
+		worldTree.PartitionNodeWithPlane( plane, 0, &front, &back );
+
+		DBGOUT("\nFront side:\n");
+		BSP::Debug::PrintTree(worldTree, front);
+		DBGOUT("\nBack side:\n");
+		BSP::Debug::PrintTree(worldTree, back);
+
+		GenerateMesh(
+			worldTree, front,
+			rawVertices, rawIndices
+		);
+	}
+#endif
+
+
+
 
 
 
@@ -364,6 +388,7 @@ ERet MyEntryPoint()
 		cameraGetViewMtx(view);
 
 		renderer.BeginFrame( width, height, reset, view, time );
+		debugDraw.frame_start();
 
 		if(1)
 		{
@@ -415,6 +440,8 @@ ERet MyEntryPoint()
 		}
 #endif
 
+
+#if 0
 		{
 			float invView[16];
 			bx::mtxInverse(invView, view);
@@ -429,7 +456,7 @@ ERet MyEntryPoint()
 			bgfx::setState(0
 				| BGFX_STATE_RGB_WRITE
 				| BGFX_STATE_ALPHA_WRITE
-				| BGFX_STATE_PT_LINES
+				| BGFX_STATE_PT_LINESTRIP
 				| BGFX_STATE_CULL_CCW
 				| BGFX_STATE_DEPTH_WRITE
 				| BGFX_STATE_DEPTH_TEST_LEQUAL
@@ -437,6 +464,29 @@ ERet MyEntryPoint()
 				);
 			bgfx::submit(RENDER_PASS_GEOMETRY_ID, renderer.geomProgram);
 		}
+#endif
+
+		{
+			using namespace BSP;
+			class DebugDrawTriangle : public ATriangleIndexCallback
+			{
+				DebugDrawManager& debugDraw;
+			public:
+				DebugDrawTriangle(DebugDrawManager& _debugDraw) : debugDraw(_debugDraw) {}
+				virtual void ProcessTriangle( const Vertex& a, const Vertex& b, const Vertex& c ) override
+				{
+					debugDraw.add_triangle( (float*)&a.xyz, (float*)&b.xyz, (float*)&c.xyz, SColor::YELLOW, false );
+				}
+			};
+			DebugDrawTriangle drawTriangle(debugDraw);
+
+			BSP::TProcessTriangles< BSP::Vertex, UINT16 > drawTriangles(
+				rawVertices.ToPtr(), rawVertices.Num(), rawIndices.ToPtr(), rawIndices.Num()
+			);
+//			drawTriangles.ProcessAllTriangles( &drawTriangle );
+		}
+
+		debugDraw.draw();
 
 		renderer.EndFrame();
 
@@ -467,7 +517,7 @@ ERet MyEntryPoint()
 						
 					);
 					GenerateMesh(
-						worldTree,
+						worldTree, 0,
 						rawVertices, rawIndices
 					);
 				}
@@ -482,6 +532,8 @@ ERet MyEntryPoint()
 
 	bgfx::destroyDynamicIndexBuffer( g_dynamicIB );
 	bgfx::destroyDynamicVertexBuffer( g_dynamicVB );
+
+	debugDraw.shutdown();
 
 	renderer.Shutdown();
 

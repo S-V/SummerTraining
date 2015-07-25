@@ -635,11 +635,11 @@ static UINT32 GetPlaneIndex(
 }
 
 // Creates a new internal node.
-static inline NodeID NewNode( Tree & tree )
+NodeID Tree::NewNode()
 {
-	const UINT32 newNodeIndex = tree.m_nodes.Num();
+	const UINT32 newNodeIndex = m_nodes.Num();
 	mxASSERT( newNodeIndex <= BSP_MAX_NODES );
-	Node & newNode = tree.m_nodes.Add();
+	Node & newNode = m_nodes.Add();
 #if MX_DEBUG
 	memset(&newNode,-1,sizeof Node);
 	//DBGOUT("! creating node %u",newNodeIndex);
@@ -647,12 +647,12 @@ static inline NodeID NewNode( Tree & tree )
 	return newNodeIndex;
 }
 
-static FaceID AddPolygon( Tree & tree, const Vertex* points, const int numPoints, FaceID * head )
+FaceID Tree::AddPolygon( const Vertex* points, const int numPoints, FaceID * head )
 {
 	mxASSERT( numPoints > 0 );
-	const UINT32 newPolyIndex = tree.m_faces.Num();
+	const UINT32 newPolyIndex = m_faces.Num();
 	mxASSERT( newPolyIndex <= BSP_MAX_POLYS );
-	Face &newPoly = tree.m_faces.Add();
+	Face &newPoly = m_faces.Add();
 	newPoly.vertices.Empty();
 	newPoly.vertices.Add( points, numPoints );
 	newPoly.next = *head;
@@ -753,24 +753,34 @@ int Tree::PartitionPolygons(
 		if( side == PLANESIDE_CROSS )
 		{
 			mxASSERT( frontPoly.Num() && backPoly.Num() );
-			AddPolygon( *this, frontPoly.ToPtr(), frontPoly.Num(), frontFaces );
-			AddPolygon( *this, backPoly.ToPtr(), backPoly.Num(), backFaces );
+			if( frontFaces != NULL ) {
+				AddPolygon( frontPoly.ToPtr(), frontPoly.Num(), frontFaces );
+			}
+			if( backFaces != NULL ) {
+				AddPolygon( backPoly.ToPtr(), backPoly.Num(), backFaces );
+			}
 		}
 		else if( side == PLANESIDE_FRONT )
 		{
-			polygon.next = *frontFaces;
-			*frontFaces = iPoly;
+			if( frontFaces != NULL ) {
+				polygon.next = *frontFaces;
+				*frontFaces = iPoly;
+			}
 		}
 		else if( side == PLANESIDE_BACK )
 		{
-			polygon.next = *backFaces;
-			*backFaces = iPoly;
+			if( backFaces != NULL ) {
+				polygon.next = *backFaces;
+				*backFaces = iPoly;
+			}
 		}
 		else
 		{
 			mxASSERT( side == PLANESIDE_ON );
-			polygon.next = *coplanar;
-			*coplanar = iPoly;
+			if( coplanar != NULL ) {
+				polygon.next = *coplanar;
+				*coplanar = iPoly;
+			}
 		}
 
 		// continue
@@ -804,7 +814,7 @@ static NodeID BuildTree_R( Tree & tree, const FaceID polygons, BspStats &stats )
 	mxASSERT( polygons != NIL_INDEX );
 
 	// allocate a new internal node
-	const NodeID iNewNode = NewNode( tree );
+	const NodeID iNewNode = tree.NewNode();
 
 	// select the best partitioner
 	SplittingCriteria	settings;
@@ -851,10 +861,6 @@ static NodeID BuildTree_R( Tree & tree, const FaceID polygons, BspStats &stats )
 		tree.m_nodes[ iNewNode ].back = MAKE_LEAF( SOLID_LEAF );
 		stats.m_numSolidLeaves++;
 	}
-
-	Node& fsfs = tree.m_nodes[ iNewNode ];
-	NODE_TYPE frontT = GET_TYPE(fsfs.front);
-	NODE_TYPE backT = GET_TYPE(fsfs.back);
 
 	return iNewNode;
 }
@@ -1408,8 +1414,8 @@ EPlaneSide Tree::PartitionNodeWithPlane(
 		// Split both children of the node.
 
 		// Create two new nodes resulting from the partitioning.
-		const NodeID newFront = NewNode( *this );
-		const NodeID newBack = NewNode( *this );
+		const NodeID newFront = NewNode();
+		const NodeID newBack = NewNode();
 
 		m_nodes[ newFront ].plane = iPlaneIndex;
 		m_nodes[ newFront ].faces = frontFaces;
@@ -1490,7 +1496,7 @@ NodeID CopySubTree(
 		const int iNewPlaneA = GetPlaneIndex( treeA, rPlaneB );
 
 		// Copy nodes.
-		newRootId = NewNode( treeA );
+		newRootId = treeA.NewNode();
 		Node &rNodeA = treeA.m_nodes[ newRootId ];
 
 		rNodeA.plane = iNewPlaneA;
@@ -1686,7 +1692,6 @@ static void ClipFacesOutsideBrush_R(
 									const Tree& treeB, const NodeID iNodeB, const AABB24& boundsB
 								 )
 {
-	DBGOUT("ClipFacesOutsideBrush_R");
 	if( IS_INTERNAL( iNodeB ) )
 	{
 		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
@@ -1696,10 +1701,12 @@ static void ClipFacesOutsideBrush_R(
 		FaceID	backFaces = NIL_INDEX;
 		FaceID	coplanar = NIL_INDEX;
 		int		faceCounts[4] = {0};
-
+int polysbefore = treeA.m_faces.Num();
 		treeA.PartitionPolygons(
 			planeB, facesA, &frontFaces, &backFaces, &coplanar, faceCounts
 		);
+
+		DBGOUT("ClipFacesOutsideBrush_R: polys %d -> %d", polysbefore, treeA.m_faces.Num());
 
 		if( frontFaces != NIL_INDEX ) {
 			ClipFacesOutsideBrush_R( treeA, frontFaces, newFacesA, treeB, rNodeB.front, boundsB );
@@ -1737,6 +1744,61 @@ static FaceID ClipFacesOutsideBrush(
 	return newFacesA;
 }
 
+static void ClipFacesOutsideBrush_R2(
+									Tree & treeA, const FaceID facesA, TArray< Face >& newFaces,
+									const Tree& treeB, const NodeID iNodeB, const AABB24& boundsB
+								 )
+{
+	if( IS_INTERNAL( iNodeB ) )
+	{
+		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
+		const Vector4& planeB = treeB.m_planes[ rNodeB.plane ];
+
+		FaceID	frontFaces = NIL_INDEX;
+		FaceID	backFaces = NIL_INDEX;
+		FaceID	coplanar = NIL_INDEX;
+		int		faceCounts[4] = {0};
+int polysbefore = treeA.m_faces.Num();
+		treeA.PartitionPolygons(
+			planeB, facesA, &frontFaces, &backFaces, &coplanar, faceCounts
+		);
+
+//		DBGOUT("ClipFacesOutsideBrush_R: polys %d -> %d", polysbefore, treeA.m_faces.Num());
+
+		if( frontFaces != NIL_INDEX ) {
+			ClipFacesOutsideBrush_R2( treeA, frontFaces, newFaces, treeB, rNodeB.front, boundsB );
+		}
+		if( backFaces != NIL_INDEX ) {
+			ClipFacesOutsideBrush_R2( treeA, backFaces, newFaces, treeB, rNodeB.back, boundsB );
+		}
+	}
+	else
+	{
+		if( IS_SOLID_LEAF( iNodeB ) )
+		{
+			DBGOUT("Num. faces: %d", Debug::CalculateFaceCount(treeA,facesA));
+			for( FaceID iFace = facesA; iFace != NIL_INDEX; )
+			{
+				const Face & face = treeA.m_faces[ iFace ];
+				const FaceID iNext = face.next;
+				newFaces.Add(face);
+				iFace = iNext;
+			}
+		}
+	}
+}
+
+static void ClipFacesOutsideBrush2(
+								  Tree & treeA, const FaceID facesA, TArray< Face >& newFaces,
+								  const Tree& treeB, const NodeID iNodeB
+								 )
+{
+	mxASSERT(IS_INTERNAL(iNodeB));
+	const AABB24 boundsB = CalculateNodeBounds( treeB, iNodeB );
+	ClipFacesOutsideBrush_R2( treeA, facesA, newFaces, treeB, iNodeB, boundsB );
+}
+
+
 // computes boolean A - B
 static NodeID MergeSubtract( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID iNodeB )
 {
@@ -1749,9 +1811,19 @@ static NodeID MergeSubtract( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID i
 
 		// Clip this node's polygons with the other tree.
 		const FaceID faceListA = nodeA.faces;
-//		nodeA.faces = NIL_INDEX;
+		nodeA.faces = NIL_INDEX;
 //		ClipFacesWithConvexBrush( treeA, faceListA, &nodeA.faces, treeB, iNodeB );
-		nodeA.faces = ClipFacesOutsideBrush( treeA, faceListA, treeB, iNodeB );
+//		nodeA.faces = ClipFacesOutsideBrush( treeA, faceListA, treeB, iNodeB );
+		{
+			TArray< Face > newFaces;
+			int polysbefore = Debug::CalculateFaceCount(treeA,faceListA);
+			ClipFacesOutsideBrush2( treeA, faceListA, newFaces, treeB, iNodeB );
+			DBGOUT("ClipFacesOutsideBrush_R: polys %d -> %d", polysbefore, newFaces.Num());
+			for( int i = 0; i < newFaces.Num(); i++ )
+			{
+				treeA.AddPolygon(newFaces[i].vertices.ToPtr(), newFaces[i].vertices.Num(), &nodeA.faces);
+			}
+		}
 
 		const NodeID nodeA_front = nodeA.front;
 		const NodeID nodeA_back = nodeA.back;
@@ -1803,8 +1875,6 @@ void Tree::CopyFrom( const Tree& other )
 		const Face& source = other.m_faces[ iFace ];
 		Face &dest = m_faces[iFace];
 		dest.next = source.next;
-		DBGOUT("next: %d", source.next);
-		//dest.vertices.SetExternalStorage( dest.buffer, mxCOUNT_OF(dest.buffer) );
 		dest.vertices.SetNum( source.vertices.Num() );
 		for( UINT32 iVtx = 0; iVtx < source.vertices.Num(); iVtx++ )
 		{
@@ -1859,7 +1929,7 @@ static void GenerateMesh_R(
 			// Triangulate the current convex polygon...
 
 			const Vertex& basePoint = face.vertices[ 0 ];
-
+#if 0
 			const UINT16 iBasePoint = vertices.Num();
 			vertices.Add( basePoint );
 
@@ -1869,20 +1939,36 @@ static void GenerateMesh_R(
 				vertices.Add( face.vertices[ i+1 ] );
 
 				indices.Add( iBasePoint );
+				indices.Add( iBasePoint + i );
+				indices.Add( iBasePoint + i + 1 );
+			}
+#else
+			for ( int i = 1; i < numTriangles + 1; i++ )
+			{
+				const UINT16 iBasePoint = vertices.Num();
+				vertices.Add( basePoint );
+				vertices.Add( face.vertices[ i ] );
+				vertices.Add( face.vertices[ i+1 ] );
+
+				indices.Add( iBasePoint );
 				indices.Add( iBasePoint + 1 );
 				indices.Add( iBasePoint + 2 );
 			}
-
+#endif
 			iFaceId = face.next;
 		}
 	}
 }
 
-void Tree::GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices ) const
+void Tree::GenerateMesh(
+						TArray< BSP::Vertex > &vertices,
+						TArray< UINT16 > &indices,
+						const NodeID start
+						) const
 {
 	vertices.Empty();
 	indices.Empty();
-	GenerateMesh_R( *this, 0, vertices, indices );
+	GenerateMesh_R( *this, start, vertices, indices );
 }
 
 namespace Debug
@@ -1935,14 +2021,14 @@ namespace Debug
 			log << "Leaf: " << NodeID_To_String(nodeIndex);
 		}
 	}
-	void PrintTree( const Tree& tree )
+	void PrintTree( const Tree& tree, const NodeID start )
 	{
 		LogStream(LL_Debug)
 			<< tree.m_nodes.Num()
 			<< " nodes, " << tree.m_planes.Num()
 			<< " planes, " << tree.m_faces.Num() << " faces"
 			;
-		PrintTree_R( tree, 0, 0 );
+		PrintTree_R( tree, start, 0 );
 	}
 }//namespace Debug
 
