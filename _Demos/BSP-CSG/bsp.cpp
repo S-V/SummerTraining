@@ -80,6 +80,11 @@ mxBEGIN_REFLECTION(Face)
 	mxMEMBER_FIELD( vertices ),
 	mxMEMBER_FIELD( next ),
 mxEND_REFLECTION;
+Face::Face()
+{
+	vertices.SetExternalStorage( buffer, mxCOUNT_OF(buffer) );
+	next = NIL_INDEX;
+}
 
 /*
 -----------------------------------------------------------------------------
@@ -96,13 +101,6 @@ Tree::Tree()
 {
 }
 
-enum {
-	MAX_TRACE_PLANES = 32,
-	MAX_VERTS_IN_POLY = 32,
-};
-
-typedef TStaticList<Vector4,MAX_TRACE_PLANES>	PlaneStack;
-
 // keep 1/8 unit away to keep the position valid before network snapping
 // and to avoid various numeric issues
 //#define	SURFACE_CLIP_EPSILON	(0.125)
@@ -113,8 +111,8 @@ typedef TStaticList<Vector4,MAX_TRACE_PLANES>	PlaneStack;
 //
 enum EPolyStatus
 {
-	Poly_Front,	// The polygon is lying in front of the plane.
 	Poly_Back,	// The polygon is lying in back of the plane.
+	Poly_Front,	// The polygon is lying in front of the plane.	
 	Poly_Split,	// The polygon intersects with the plane.
 	Poly_Coplanar,	// The polygon is lying on the plane.
 };
@@ -358,7 +356,7 @@ mxSWIPED("Doom 3 BFG Edition GPL Source Code, idSoftware");
 EPlaneSide SplitConvexPolygonByPlane(
 									 const Face& polygon,
 									 Face &front,	// valid only if the polygon was split
-									 Face &back,		// valid only if the polygon was split
+									 Face &back,	// valid only if the polygon was split
 									 const Vector4& plane,
 									 const float epsilon
 							   )
@@ -650,8 +648,6 @@ static FaceID AddPolygon( const Face& poly, Tree & tree, FaceID * head )
 	const UINT32 newPolyIndex = tree.m_faces.Num();
 	mxASSERT( newPolyIndex <= BSP_MAX_POLYS );
 	Face &newPoly = tree.m_faces.Add();
-	MemZero(&newPoly,sizeof(Face));
-	newPoly.vertices.SetExternalStorage( newPoly.buffer, mxCOUNT_OF(newPoly.buffer) );
 	newPoly.vertices = poly.vertices;
 	newPoly.next = *head;
 	*head = newPolyIndex;
@@ -682,19 +678,24 @@ int Tree::PartitionPolygons(
 {
 	int totalFaces = 0;	// the total number of all considered polygons
 
+	Vertex	buffer1[64];
+	Vertex	buffer2[64];
+
+	Face	frontPoly;
+	Face	backPoly;
+	frontPoly.vertices.Clear();
+	backPoly.vertices.Clear();
+	frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
+	backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+
 	FaceID iPoly = polygons;
 	while( iPoly != NIL_INDEX )
 	{
 		Face &	polygon = m_faces[ iPoly ];
 		const FaceID iNextPoly = polygon.next;
 
-		Vertex	buffer1[64];
-		Vertex	buffer2[64];
-
-		Face	frontPoly;
-		Face	backPoly;
-		frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
-		backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+		frontPoly.vertices.Empty();
+		backPoly.vertices.Empty();
 
 		const EPlaneSide side = SplitConvexPolygonByPlane( polygon, frontPoly, backPoly, partitioner, epsilon );
 
@@ -754,7 +755,7 @@ static NodeID BuildTree_R( Tree & tree, const FaceID polygons, BspStats &stats )
 	mxASSERT( polygons != NIL_INDEX );
 
 	// allocate a new internal node
-	const NodeID nodeIndex = NewNode( tree );
+	const NodeID iNewNode = NewNode( tree );
 
 	// select the best partitioner
 	SplittingCriteria	settings;
@@ -778,35 +779,35 @@ static NodeID BuildTree_R( Tree & tree, const FaceID polygons, BspStats &stats )
 
 	stats.m_numSplits += faceCounts[PLANESIDE_CROSS];
 
-	tree.m_nodes[ nodeIndex ].plane = GetPlaneIndex( tree, splittingPlane );
-	tree.m_nodes[ nodeIndex ].faces = coplanar;
+	tree.m_nodes[ iNewNode ].plane = GetPlaneIndex( tree, splittingPlane );
+	tree.m_nodes[ iNewNode ].faces = coplanar;
 
 	// recursively process children
 	if( frontFaces != NIL_INDEX )
 	{
-		tree.m_nodes[ nodeIndex ].front = BuildTree_R( tree, frontFaces, stats );
+		tree.m_nodes[ iNewNode ].front = BuildTree_R( tree, frontFaces, stats );
 	}
 	else
 	{
-		tree.m_nodes[ nodeIndex ].front = MAKE_LEAF( EMPTY_LEAF );
+		tree.m_nodes[ iNewNode ].front = MAKE_LEAF( EMPTY_LEAF );
 		stats.m_numEmptyLeaves++;
 	}
 
 	if( backFaces != NIL_INDEX )
 	{
-		tree.m_nodes[ nodeIndex ].back = BuildTree_R( tree, backFaces, stats );
+		tree.m_nodes[ iNewNode ].back = BuildTree_R( tree, backFaces, stats );
 	}
 	else
 	{
-		tree.m_nodes[ nodeIndex ].back = MAKE_LEAF( SOLID_LEAF );
+		tree.m_nodes[ iNewNode ].back = MAKE_LEAF( SOLID_LEAF );
 		stats.m_numSolidLeaves++;
 	}
 
-	Node& fsfs = tree.m_nodes[ nodeIndex ];
+	Node& fsfs = tree.m_nodes[ iNewNode ];
 	NODE_TYPE frontT = GET_TYPE(fsfs.front);
 	NODE_TYPE backT = GET_TYPE(fsfs.back);
 
-	return nodeIndex;
+	return iNewNode;
 }
 
 ERet Tree::Build( ATriangleMeshInterface* triangleMesh )
@@ -1444,7 +1445,7 @@ NodeID CopySubTree(
 
 		rNodeA.plane = iNewPlaneA;
 
-#if 1
+#if 0
 		rNodeA.faces = NIL_INDEX;
 
 		FaceID iFaceB = rNodeB.faces;
@@ -1811,7 +1812,9 @@ namespace Debug
 
 			log
 				<< "Node[" << nodeIndex << "]: neg=" << NodeID_To_String(node.back) << ", pos=" << NodeID_To_String(node.front)
-				<< ", faces: " << CalculateFaceCount(tree, node.faces);
+				<< ", faces: " << CalculateFaceCount(tree, node.faces)
+				<< ", plane: " << plane
+				;
 
 			log.Flush();
 

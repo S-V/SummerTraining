@@ -106,8 +106,8 @@ void MakeBoxMesh(
 
 static void UpdateRenderMesh( const BSP::Vertex* vertices, int numVertices, const UINT16* indices, int numIndices )
 {
-	const bgfx::Memory* vertexMemory = bgfx::makeRef( vertices, sizeof(vertices[0])*numVertices );
-	const bgfx::Memory* indexMemory = bgfx::makeRef( indices, sizeof(indices[0])*numIndices );
+	const bgfx::Memory* vertexMemory = bgfx::copy( vertices, sizeof(vertices[0])*numVertices );
+	const bgfx::Memory* indexMemory = bgfx::copy( indices, sizeof(indices[0])*numIndices );
 
 	bgfx::updateDynamicVertexBuffer( g_dynamicVB, 0, vertexMemory );
 	bgfx::updateDynamicIndexBuffer( g_dynamicIB, 0, indexMemory );

@@ -245,6 +245,14 @@ EPolyStatus ClassifyPolygon(
 }
 
 #if 0
+
+enum {
+	MAX_TRACE_PLANES = 32,
+	MAX_VERTS_IN_POLY = 32,
+};
+
+//typedef TStaticList<Vector4,MAX_TRACE_PLANES>	PlaneStack;
+
 /*
 Sutherland-Hodgman clipping algorithm:
 - For each clip plane:
@@ -741,37 +749,37 @@ static BspNodeID BuildTree_R( BspTree & tree, const UINT16 polygons, BspStats &s
 	mxASSERT( polygons != BSP_NONE );
 
 	// allocate a new internal node
-	const BspNodeID nodeIndex = NewNode( tree );
+	const BspNodeID iNewNode = NewNode( tree );
 
 	// partition the list
 	BspPolyID	frontPolys = BSP_NONE;
 	BspPolyID	backPolys = BSP_NONE;
-	const UINT32 splitPlane = PartitionPolygons( tree, nodeIndex, stats, polygons, &frontPolys, &backPolys );
+	const UINT32 splitPlane = PartitionPolygons( tree, iNewNode, stats, polygons, &frontPolys, &backPolys );
 
-	tree.m_nodes[ nodeIndex ].plane = splitPlane;
+	tree.m_nodes[ iNewNode ].plane = splitPlane;
 
 	// recursively process children
 	if( frontPolys != BSP_NONE )
 	{
-		tree.m_nodes[ nodeIndex ].front = BuildTree_R( tree, frontPolys, stats );
+		tree.m_nodes[ iNewNode ].front = BuildTree_R( tree, frontPolys, stats );
 	}
 	else
 	{
-		tree.m_nodes[ nodeIndex ].front = BSP_EMPTY_LEAF;
+		tree.m_nodes[ iNewNode ].front = BSP_EMPTY_LEAF;
 		stats.m_numEmptyLeaves++;
 	}
 
 	if( backPolys != BSP_NONE )
 	{
-		tree.m_nodes[ nodeIndex ].back = BuildTree_R( tree, backPolys, stats );
+		tree.m_nodes[ iNewNode ].back = BuildTree_R( tree, backPolys, stats );
 	}
 	else
 	{
-		tree.m_nodes[ nodeIndex ].back = BSP_SOLID_LEAF;
+		tree.m_nodes[ iNewNode ].back = BSP_SOLID_LEAF;
 		stats.m_numSolidLeaves++;
 	}
 
-	return nodeIndex;
+	return iNewNode;
 }
 
 ERet BspTree::Build( ATriangleMeshInterface* triangleMesh )

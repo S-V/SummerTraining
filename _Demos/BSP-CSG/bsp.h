@@ -175,6 +175,7 @@ struct Face : public CStruct
 public:
 	mxDECLARE_CLASS(Face,CStruct);
 	mxDECLARE_REFLECTION;
+	Face();
 };
 
 /*
