@@ -1686,6 +1686,7 @@ static void ClipFacesOutsideBrush_R(
 									const Tree& treeB, const NodeID iNodeB, const AABB24& boundsB
 								 )
 {
+	DBGOUT("ClipFacesOutsideBrush_R");
 	if( IS_INTERNAL( iNodeB ) )
 	{
 		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
@@ -1700,12 +1701,10 @@ static void ClipFacesOutsideBrush_R(
 			planeB, facesA, &frontFaces, &backFaces, &coplanar, faceCounts
 		);
 
-		if( frontFaces != NIL_INDEX )
-		{
+		if( frontFaces != NIL_INDEX ) {
 			ClipFacesOutsideBrush_R( treeA, frontFaces, newFacesA, treeB, rNodeB.front, boundsB );
 		}
-		if( backFaces != NIL_INDEX )
-		{
+		if( backFaces != NIL_INDEX ) {
 			ClipFacesOutsideBrush_R( treeA, backFaces, newFacesA, treeB, rNodeB.back, boundsB );
 		}
 	}
@@ -1713,7 +1712,15 @@ static void ClipFacesOutsideBrush_R(
 	{
 		if( IS_SOLID_LEAF( iNodeB ) )
 		{
-			//
+			DBGOUT("Num. faces: %d", Debug::CalculateFaceCount(treeA,facesA));
+			for( FaceID iFace = facesA; iFace != NIL_INDEX; )
+			{
+				Face & face = treeA.m_faces[ iFace ];
+				const FaceID iNext = face.next;
+				face.next = *newFacesA;
+				*newFacesA = iFace;
+				iFace = iNext;
+			}
 		}
 	}
 }
@@ -1744,7 +1751,6 @@ static NodeID MergeSubtract( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID i
 		const FaceID faceListA = nodeA.faces;
 //		nodeA.faces = NIL_INDEX;
 //		ClipFacesWithConvexBrush( treeA, faceListA, &nodeA.faces, treeB, iNodeB );
-		nodeA.faces = NIL_INDEX;
 		nodeA.faces = ClipFacesOutsideBrush( treeA, faceListA, treeB, iNodeB );
 
 		const NodeID nodeA_front = nodeA.front;
@@ -1881,7 +1887,7 @@ void Tree::GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indi
 
 namespace Debug
 {
-	static int CalculateFaceCount( const Tree& tree, const FaceID faces )
+	int CalculateFaceCount( const Tree& tree, const FaceID faces )
 	{
 		int result = 0;
 		FaceID iFaceId = faces;

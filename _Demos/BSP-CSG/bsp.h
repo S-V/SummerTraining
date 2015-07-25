@@ -336,6 +336,7 @@ NodeID CopySubTree(
 namespace Debug
 {
 	void PrintTree( const Tree& tree );
+	int CalculateFaceCount( const Tree& tree, const FaceID faces );
 }//namespace Debug
 
 #if 0
