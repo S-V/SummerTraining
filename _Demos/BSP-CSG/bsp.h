@@ -166,6 +166,7 @@ struct Node : public CStruct
 public:
 	mxDECLARE_CLASS(Node,CStruct);
 	mxDECLARE_REFLECTION;
+	//Node();
 };
 struct Face : public CStruct
 {
@@ -264,6 +265,7 @@ public:
 	void GenerateMesh( TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices ) const;
 
 public:	// Internal functions:
+
 	int PartitionPolygons(
 		const Vector4& partitioner,
 		const FaceID polygons,
@@ -280,6 +282,18 @@ public:	// Internal functions:
 		NodeID *front,
 		NodeID *back
 	);
+
+#if 0
+	int FindPlaneIndex(
+		const Vector4& plane,
+		const float normal_epsilon,
+		const float distance_epsilon
+	) const;
+
+	UINT16 AddUniquePlane(
+		const Vector4& plane
+	);
+#endif
 };
 
 enum { BSP_MAX_NODES = (1U<<14)-1 };

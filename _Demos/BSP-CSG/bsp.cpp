@@ -353,16 +353,20 @@ EPlaneSide SplitConvexPolygonByPlane(
 #endif
 
 mxSWIPED("Doom 3 BFG Edition GPL Source Code, idSoftware");
-EPlaneSide SplitConvexPolygonByPlane(
-									 const Face& polygon,
-									 Face &front,	// valid only if the polygon was split
-									 Face &back,	// valid only if the polygon was split
-									 const Vector4& plane,
-									 const float epsilon
-							   )
+static EPlaneSide SplitConvexPolygonByPlane(
+	const Vertex* vertices,
+	const int vertexCount,
+	TArray<Vertex> &front,	// valid only if the polygon was split
+	TArray<Vertex> &back,	// valid only if the polygon was split
+	const Vector4& plane,
+	const float epsilon
+	)
 {
-	const int numPoints = polygon.vertices.Num();
-	const Vertex* p = polygon.vertices.ToPtr();
+	const int numPoints = vertexCount;
+	const Vertex* p = vertices;
+
+	front.Empty();
+	back.Empty();
 
 	float *	dists = (float *) _alloca( (numPoints+4) * sizeof( float ) );
 	BYTE *	sides = (BYTE *) _alloca( (numPoints+4) * sizeof( BYTE ) );
@@ -430,17 +434,17 @@ EPlaneSide SplitConvexPolygonByPlane(
 		const Vertex* p1 = &p[i];
 
 		if ( sides[i] == PLANESIDE_ON ) {
-			front.vertices.Add( *p1 );
-			back.vertices.Add( *p1 );
+			front.Add( *p1 );
+			back.Add( *p1 );
 			continue;
 		}
 
 		if ( sides[i] == PLANESIDE_FRONT ) {
-			front.vertices.Add( *p1 );
+			front.Add( *p1 );
 		}
 
 		if ( sides[i] == PLANESIDE_BACK ) {
-			back.vertices.Add( *p1 );
+			back.Add( *p1 );
 		}
 
 		if ( sides[i+1] == PLANESIDE_ON || sides[i+1] == sides[i] ) {
@@ -485,11 +489,11 @@ EPlaneSide SplitConvexPolygonByPlane(
 			mid.UV = PackUV( p2st + ( p1st - p2st ) * dot );
 		}
 
-		front.vertices.Add( mid );
-		back.vertices.Add( mid );
+		front.Add( mid );
+		back.Add( mid );
 	}
 
-	if ( front.vertices.Num() > maxpts || back.vertices.Num() > maxpts ) {
+	if ( front.Num() > maxpts || back.Num() > maxpts ) {
 		ptERROR( "SplitConvexPolygonByPlane: points exceeded estimate." );
 	}
 
@@ -643,12 +647,14 @@ static inline NodeID NewNode( Tree & tree )
 	return newNodeIndex;
 }
 
-static FaceID AddPolygon( const Face& poly, Tree & tree, FaceID * head )
+static FaceID AddPolygon( Tree & tree, const Vertex* points, const int numPoints, FaceID * head )
 {
+	mxASSERT( numPoints > 0 );
 	const UINT32 newPolyIndex = tree.m_faces.Num();
 	mxASSERT( newPolyIndex <= BSP_MAX_POLYS );
 	Face &newPoly = tree.m_faces.Add();
-	newPoly.vertices = poly.vertices;
+	newPoly.vertices.Empty();
+	newPoly.vertices.Add( points, numPoints );
 	newPoly.next = *head;
 	*head = newPolyIndex;
 	return newPolyIndex;
@@ -666,6 +672,47 @@ static int CalculatePolygonCount( const Tree& tree, FaceID iPoly )
 	return result;
 }
 
+#if 0
+int Tree::FindPlaneIndex(
+						 const Vector4& plane,
+						 const float normal_epsilon,
+						 const float distance_epsilon
+						 ) const
+{
+	const Float3 planeNormal = Plane_CalculateNormal( plane );
+	const Vector4 normalizedPlane = { planeNormal.x, planeNormal.y, planeNormal.z, plane.w };
+	//normalizedPlane.FixDegeneracies( distEps );
+
+	const int numExistingPlanes = m_planes.Num();
+
+	for( int iPlane = 0; iPlane < numExistingPlanes; iPlane++ )
+	{
+		const Vector4& existingPlane = m_planes[ iPlane ];
+
+		if( Planes_Equal( existingPlane, normalizedPlane, normal_epsilon, distance_epsilon ) )
+		{
+			return iPlane;
+		}
+	}
+	return -1;
+}
+
+UINT16 Tree::AddUniquePlane(
+	const Vector4& plane
+	)
+{
+	const int iExistingPlane = this->FindPlaneIndex( plane, NORMAL_EPSILON, DIST_EPSILON );
+	if( iExistingPlane != -1 ) {
+		return iExistingPlane;
+	}
+	const int iNewPlaneIndex = m_planes.Num();
+	mxASSERT( iNewPlaneIndex < BSP_MAX_PLANES );
+
+	m_planes.Add( normalizedPlane );
+
+	return iNewPlaneIndex;
+}
+#endif
 int Tree::PartitionPolygons(
 							const Vector4& partitioner,
 							const FaceID polygons,
@@ -681,12 +728,10 @@ int Tree::PartitionPolygons(
 	Vertex	buffer1[64];
 	Vertex	buffer2[64];
 
-	Face	frontPoly;
-	Face	backPoly;
-	frontPoly.vertices.Clear();
-	backPoly.vertices.Clear();
-	frontPoly.vertices.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
-	backPoly.vertices.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+	TArray< Vertex > frontPoly;
+	TArray< Vertex > backPoly;
+	frontPoly.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
+	backPoly.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
 
 	FaceID iPoly = polygons;
 	while( iPoly != NIL_INDEX )
@@ -694,18 +739,22 @@ int Tree::PartitionPolygons(
 		Face &	polygon = m_faces[ iPoly ];
 		const FaceID iNextPoly = polygon.next;
 
-		frontPoly.vertices.Empty();
-		backPoly.vertices.Empty();
-
-		const EPlaneSide side = SplitConvexPolygonByPlane( polygon, frontPoly, backPoly, partitioner, epsilon );
+		const EPlaneSide side = SplitConvexPolygonByPlane(
+			polygon.vertices.ToPtr(),
+			polygon.vertices.Num(),
+			frontPoly,
+			backPoly,
+			partitioner,
+			epsilon
+		);
 
 		faceCounts[side]++;
 
 		if( side == PLANESIDE_CROSS )
 		{
-			mxASSERT( frontPoly.vertices.Num() && backPoly.vertices.Num() );
-			AddPolygon( frontPoly, *this, frontFaces );
-			AddPolygon( backPoly, *this, backFaces );
+			mxASSERT( frontPoly.Num() && backPoly.Num() );
+			AddPolygon( *this, frontPoly.ToPtr(), frontPoly.Num(), frontFaces );
+			AddPolygon( *this, backPoly.ToPtr(), backPoly.Num(), backFaces );
 		}
 		else if( side == PLANESIDE_FRONT )
 		{
@@ -1437,15 +1486,17 @@ NodeID CopySubTree(
 		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
 		const Vector4& rPlaneB = treeB.m_planes[ rNodeB.plane ];
 
-		const int iNewPlaneA = treeA.m_planes.Num();
-		treeA.m_planes.Add( rPlaneB );
+		// Copy planes.
+		const int iNewPlaneA = GetPlaneIndex( treeA, rPlaneB );
 
+		// Copy nodes.
 		newRootId = NewNode( treeA );
 		Node &rNodeA = treeA.m_nodes[ newRootId ];
 
 		rNodeA.plane = iNewPlaneA;
 
-#if 0
+
+		// Copy polygons.
 		rNodeA.faces = NIL_INDEX;
 
 		FaceID iFaceB = rNodeB.faces;
@@ -1462,7 +1513,7 @@ NodeID CopySubTree(
 
 			iFaceB = rFaceB.next;
 		}
-#endif
+
 
 		treeA.m_nodes[ newRootId ].front = CopySubTree( treeA, treeB, rNodeB.front );
 		treeA.m_nodes[ newRootId ].back = CopySubTree( treeA, treeB, rNodeB.back );
@@ -1629,6 +1680,56 @@ static void ClipFacesWithConvexBrush(
 	ClipFacesWithConvexBrush_R( treeA, facesA, newFacesA, treeB, iNodeB, boundsB );
 }
 #endif
+
+static void ClipFacesOutsideBrush_R(
+									Tree & treeA, const FaceID facesA, FaceID *newFacesA,
+									const Tree& treeB, const NodeID iNodeB, const AABB24& boundsB
+								 )
+{
+	if( IS_INTERNAL( iNodeB ) )
+	{
+		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
+		const Vector4& planeB = treeB.m_planes[ rNodeB.plane ];
+
+		FaceID	frontFaces = NIL_INDEX;
+		FaceID	backFaces = NIL_INDEX;
+		FaceID	coplanar = NIL_INDEX;
+		int		faceCounts[4] = {0};
+
+		treeA.PartitionPolygons(
+			planeB, facesA, &frontFaces, &backFaces, &coplanar, faceCounts
+		);
+
+		if( frontFaces != NIL_INDEX )
+		{
+			ClipFacesOutsideBrush_R( treeA, frontFaces, newFacesA, treeB, rNodeB.front, boundsB );
+		}
+		if( backFaces != NIL_INDEX )
+		{
+			ClipFacesOutsideBrush_R( treeA, backFaces, newFacesA, treeB, rNodeB.back, boundsB );
+		}
+	}
+	else
+	{
+		if( IS_SOLID_LEAF( iNodeB ) )
+		{
+			//
+		}
+	}
+}
+
+static FaceID ClipFacesOutsideBrush(
+								  Tree & treeA, const FaceID facesA,
+								  const Tree& treeB, const NodeID iNodeB
+								 )
+{
+	mxASSERT(IS_INTERNAL(iNodeB));
+	FaceID	newFacesA = NIL_INDEX;
+	const AABB24 boundsB = CalculateNodeBounds( treeB, iNodeB );
+	ClipFacesOutsideBrush_R( treeA, facesA, &newFacesA, treeB, iNodeB, boundsB );
+	return newFacesA;
+}
+
 // computes boolean A - B
 static NodeID MergeSubtract( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID iNodeB )
 {
@@ -1643,6 +1744,8 @@ static NodeID MergeSubtract( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID i
 		const FaceID faceListA = nodeA.faces;
 //		nodeA.faces = NIL_INDEX;
 //		ClipFacesWithConvexBrush( treeA, faceListA, &nodeA.faces, treeB, iNodeB );
+		nodeA.faces = NIL_INDEX;
+		nodeA.faces = ClipFacesOutsideBrush( treeA, faceListA, treeB, iNodeB );
 
 		const NodeID nodeA_front = nodeA.front;
 		const NodeID nodeA_back = nodeA.back;

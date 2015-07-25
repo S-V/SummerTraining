@@ -144,10 +144,15 @@ ERet MyEntryPoint()
 	FileLogUtil		fileLog;
 
 
+
+
+	BSP::Vertex::init();
+
 	Renderer	renderer;
 	mxDO(renderer.Initialize());
 
-	BSP::Vertex::init();
+	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
+	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
 
 
 
@@ -209,6 +214,7 @@ ERet MyEntryPoint()
 			}
 		}
 
+		// flip winding to turn the model inside out
 		{
 			const int numTriangles = rawIndices.Num() / 3;
 			for( int i = 0; i < numTriangles; i++ )
@@ -234,8 +240,6 @@ ERet MyEntryPoint()
 
 
 
-	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
-	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
 
 	
 
@@ -249,16 +253,14 @@ ERet MyEntryPoint()
 
 #if 1
 	{
-		Float3 pos = Float3_Set(0,-5,0);
+		Float3 pos = Float3_Set(0,-0,0);
 #if 1
-		{
-			Subtract(
-				pos,
-				worldTree,
-				operand,
-				temporary
-				);
-		}
+		Subtract(
+			pos,
+			worldTree,
+			operand,
+			temporary
+			);
 #else
 		temporary.CopyFrom( operand );
 		temporary.Translate( pos );
@@ -268,6 +270,14 @@ ERet MyEntryPoint()
 #endif
 	}
 #endif
+
+
+
+
+
+
+
+
 
 	GenerateMesh(
 		worldTree,
