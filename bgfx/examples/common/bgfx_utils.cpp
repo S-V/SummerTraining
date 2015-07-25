@@ -55,7 +55,6 @@ void unload(void* _ptr)
 
 static const bgfx::Memory* loadMem(bx::FileReaderI* _reader, const char* _filePath)
 {
-	BX_TRACE("loadMem: %s",_filePath);
 	if (0 == bx::open(_reader, _filePath) )
 	{
 		uint32_t size = (uint32_t)bx::getSize(_reader);
@@ -530,11 +529,10 @@ struct Mesh
 			const Group& group = *it;
 
 			bgfx::setTransform(cached);
-			bgfx::setProgram(_program);
 			bgfx::setIndexBuffer(group.m_ibh);
 			bgfx::setVertexBuffer(group.m_vbh);
 			bgfx::setState(_state);
-			bgfx::submit(_id);
+			bgfx::submit(_id, _program);
 		}
 	}
 
@@ -560,11 +558,10 @@ struct Mesh
 							, texture.m_flags
 							);
 				}
-				bgfx::setProgram(state.m_program);
 				bgfx::setIndexBuffer(group.m_ibh);
 				bgfx::setVertexBuffer(group.m_vbh);
 				bgfx::setState(state.m_state);
-				bgfx::submit(state.m_viewId);
+				bgfx::submit(state.m_viewId, state.m_program);
 			}
 		}
 	}

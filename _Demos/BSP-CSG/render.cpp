@@ -561,7 +561,6 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 						*indices++ = 3;
 						*indices++ = 0;
 
-						bgfx::setProgram(lineProgram);
 						bgfx::setVertexBuffer(&tvb);
 						bgfx::setIndexBuffer(&tib);
 						bgfx::setState(0
@@ -569,7 +568,7 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 							| BGFX_STATE_PT_LINES
 							| BGFX_STATE_BLEND_ALPHA
 							);
-						bgfx::submit(RENDER_PASS_DEBUG_LIGHTS_ID);
+						bgfx::submit(RENDER_PASS_DEBUG_LIGHTS_ID, lineProgram);
 					}
 				}
 
@@ -590,14 +589,13 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 				bgfx::setScissor(uint16_t(x0), height-scissorHeight-uint16_t(y0), uint16_t(x1-x0), scissorHeight);
 				bgfx::setTexture(0, s_normal, gbuffer, 1);
 				bgfx::setTexture(1, s_depth,  gbuffer, 2);
-				bgfx::setProgram(lightProgram);
 				bgfx::setState(0
 					| BGFX_STATE_RGB_WRITE
 					| BGFX_STATE_ALPHA_WRITE
 					| BGFX_STATE_BLEND_ADD
 					);
 				screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft);
-				bgfx::submit(RENDER_PASS_LIGHT_ID);
+				bgfx::submit(RENDER_PASS_LIGHT_ID, lightProgram);
 			}
 		}
 	}
@@ -624,7 +622,6 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 		bgfx::setUniform(u_inverseViewMat, invView);
 		bgfx::setTexture(0, s_normal, gbuffer, RT_NORMALS);
 		bgfx::setTexture(1, s_depth,  gbuffer, RT_DEPTH);
-		bgfx::setProgram(deferred_directional_light_program);
 		bgfx::setState(0
 			| BGFX_STATE_RGB_WRITE
 			| BGFX_STATE_ALPHA_WRITE
@@ -639,19 +636,18 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 		//	| BGFX_STENCIL_OP_PASS_Z_KEEP
 		//	);
 		screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft, 1.0f);
-		bgfx::submit(RENDER_PASS_GLOBAL_LIGHT);
+		bgfx::submit(RENDER_PASS_GLOBAL_LIGHT, deferred_directional_light_program);
 	}
 
 	// Combine color and light buffers.
 	bgfx::setTexture(0, s_albedo, gbuffer,     RT_ALBEDO);
 	bgfx::setTexture(1, s_light,  lightBuffer, 0);
-	bgfx::setProgram(combineProgram);
 	bgfx::setState(0
 		| BGFX_STATE_RGB_WRITE
 		| BGFX_STATE_ALPHA_WRITE
 		);
 	screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft);
-	bgfx::submit(RENDER_PASS_COMBINE_ID);
+	bgfx::submit(RENDER_PASS_COMBINE_ID, combineProgram);
 
 	if (showGBuffer)
 	{
@@ -667,12 +663,11 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 				, -7.9f - BX_COUNTOF(gbufferTex)*0.1f*0.5f + ii*2.1f*aspectRatio, 4.0f, 0.0f
 				);
 			bgfx::setTransform(mtx);
-			bgfx::setProgram(debugProgram);
 			bgfx::setVertexBuffer(cubeVB);
 			bgfx::setIndexBuffer(cubeIB, 0, 6);
 			bgfx::setTexture(0, s_texColor, gbufferTex[ii]);
 			bgfx::setState(BGFX_STATE_RGB_WRITE);
-			bgfx::submit(RENDER_PASS_DEBUG_GBUFFER_ID);
+			bgfx::submit(RENDER_PASS_DEBUG_GBUFFER_ID, debugProgram);
 		}
 	}
 

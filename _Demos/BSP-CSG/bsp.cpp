@@ -1631,6 +1631,7 @@ static void ClipFacesWithConvexBrush(
 // computes boolean A - B
 static NodeID MergeSubtract( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID iNodeB )
 {
+	DBGOUT("MergeSubtract: %d <- %d", iNodeA, iNodeB);
 	if( IS_INTERNAL( iNodeA ) )
 	{
 		Node& nodeA = treeA.m_nodes[ iNodeA ];
@@ -1664,7 +1665,6 @@ NODE_TYPE tb1 = GET_TYPE(newNodeA_back);
 		// this is a leaf node
 		if( IS_SOLID_LEAF( iNodeA ) )
 		{
-			//@todo: discard the old subtree
 			return CopySubTree( treeA, treeB, iNodeB );
 		}
 		// empty space - do nothing
@@ -1694,6 +1694,7 @@ void Tree::CopyFrom( const Tree& other )
 		Face &dest = m_faces[iFace];
 		dest.next = source.next;
 		DBGOUT("next: %d", source.next);
+		//dest.vertices.SetExternalStorage( dest.buffer, mxCOUNT_OF(dest.buffer) );
 		dest.vertices.SetNum( source.vertices.Num() );
 		for( UINT32 iVtx = 0; iVtx < source.vertices.Num(); iVtx++ )
 		{

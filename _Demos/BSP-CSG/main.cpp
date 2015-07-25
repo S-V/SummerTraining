@@ -116,8 +116,8 @@ static void UpdateRenderMesh( const BSP::Vertex* vertices, int numVertices, cons
 static void Subtract(
 				  const Float3& position,
 				  BSP::Tree & worldTree,
-				  const BSP::Tree& mesh,	// subtractive brush
-				  BSP::Tree & temporary
+				  const BSP::Tree& mesh,	// subtractive brush (template)
+				  BSP::Tree & temporary		// subtractive brush (instance)
 				  )
 {
 	temporary.CopyFrom( mesh );
@@ -250,7 +250,7 @@ ERet MyEntryPoint()
 #if 1
 	{
 		Float3 pos = Float3_Set(0,-5,0);
-#if 0
+#if 1
 		{
 			Subtract(
 				pos,
@@ -258,8 +258,6 @@ ERet MyEntryPoint()
 				operand,
 				temporary
 				);
-			DBGOUT("\nWorld tree after CSG:\n");
-			BSP::Debug::PrintTree(worldTree);
 		}
 #else
 		temporary.CopyFrom( operand );
@@ -362,7 +360,6 @@ ERet MyEntryPoint()
 			float invView[16];
 			bx::mtxInverse(invView, view);
 			bgfx::setUniform(renderer.u_inverseViewMat, invView);
-			bgfx::setProgram(renderer.geomProgram);
 
 			bgfx::setVertexBuffer(g_dynamicVB);
 			bgfx::setIndexBuffer(g_dynamicIB);
@@ -379,9 +376,10 @@ ERet MyEntryPoint()
 				| BGFX_STATE_MSAA
 				);
 
-			bgfx::submit(RENDER_PASS_GEOMETRY_ID);
+			bgfx::submit(RENDER_PASS_GEOMETRY_ID, renderer.geomProgram);
 		}
 
+#if 0
 		if( lastHit.hitAnything )
 		{
 			float mtx[16];
@@ -404,6 +402,30 @@ ERet MyEntryPoint()
 				| BGFX_STATE_MSAA
 				);
 			bgfx::submit(RENDER_PASS_GEOMETRY_ID);
+		}
+#endif
+
+		{
+			float invView[16];
+			bx::mtxInverse(invView, view);
+			bgfx::setUniform(renderer.u_inverseViewMat, invView);
+
+			bgfx::setVertexBuffer(g_dynamicVB);
+			bgfx::setIndexBuffer(g_dynamicIB);
+
+			bgfx::setTexture(0, renderer.s_texColor,  renderer.textureColor);
+			bgfx::setTexture(1, renderer.s_texNormal, renderer.textureNormal);
+
+			bgfx::setState(0
+				| BGFX_STATE_RGB_WRITE
+				| BGFX_STATE_ALPHA_WRITE
+				| BGFX_STATE_PT_LINES
+				| BGFX_STATE_CULL_CCW
+				| BGFX_STATE_DEPTH_WRITE
+				| BGFX_STATE_DEPTH_TEST_LEQUAL
+				| BGFX_STATE_MSAA
+				);
+			bgfx::submit(RENDER_PASS_GEOMETRY_ID, renderer.geomProgram);
 		}
 
 		renderer.EndFrame();
