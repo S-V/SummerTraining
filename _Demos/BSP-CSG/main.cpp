@@ -41,6 +41,8 @@ ERet MyEntryPoint()
 	mxDO(csg.Initialize());
 
 
+	csg.RunTestCode();
+
 
 	int fireRate = 10; // shots per second
 	int64_t lastTimeShot = 0;

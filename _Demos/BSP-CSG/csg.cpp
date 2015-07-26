@@ -65,7 +65,7 @@ ERet CSG::Initialize()
 
 	// Create test models.
 	{
-		MakeBoxMesh( 10.0f, 10.0f, 10.0f, vertices, indices );
+		MakeBoxMesh( 10.0f, 50.0f, 10.0f, vertices, indices );
 		FlipWinding( vertices, indices );
 		Build_BSP_Tree( vertices, indices, operand );
 		DBGOUT("\nModel BSP tree:\n");
@@ -81,7 +81,7 @@ ERet CSG::Initialize()
 
 	// Create render mesh.
 	dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
-	dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
+	dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_ALLOW_RESIZE );
 
 	return ALL_OK;
 }
@@ -95,11 +95,9 @@ void CSG::RunTestCode()
 {
 	DBGOUT("\nPolygons before CSG:\n");
 	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
-
-
 #if 1
 	{
-		Float3 pos = Float3_Set(0,-10,0);
+		Float3 pos = Float3_Set(40,0,20);
 #if 1
 		//Subtract(
 		//	pos,
@@ -108,8 +106,18 @@ void CSG::RunTestCode()
 		//	temporary1
 		//	);
 
-		temporary1.CopyFrom( operand );
-		worldTree.Subtract2( temporary1, operand );
+		MakeBoxMesh( 50.0f, 20.0f, 50.0f, vertices, indices );
+		Build_BSP_Tree( vertices, indices, worldTree );
+
+		BSP::Tree subtractiveModel;
+		//MakeBoxMesh( 70.0f, 200.0f, 70.0f, vertices, indices );
+		MakeBoxMesh( 20.0f, 100.0f, 10.0f, vertices, indices );
+		FlipWinding( vertices, indices );
+		Build_BSP_Tree( vertices, indices, subtractiveModel );
+
+		temporary1.CopyFrom( subtractiveModel );
+		temporary2.CopyFrom( subtractiveModel );
+		worldTree.Subtract2( temporary1, temporary2 );
 
 #else
 		temporary1.CopyFrom( operand );
@@ -120,7 +128,6 @@ void CSG::RunTestCode()
 #endif
 	}
 #endif
-
 
 
 
@@ -180,7 +187,6 @@ void CSG::RunTestCode()
 	//DbgRemoveFirstPoly( worldTree, 0 );
 	//BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
 
-
 	{
 		vertices.Empty();
 		indices.Empty();
@@ -197,21 +203,19 @@ void CSG::RunTestCode()
 void CSG::Subtract(
 				   const Float3& _position,
 				   BSP::Tree & _worldTree,
-				   const BSP::Tree& _mesh,	// subtractive brush (template)
-				   BSP::Tree & _temporary		// subtractive brush (instance)
+				   const BSP::Tree& _mesh
 				   )
 {
-	_temporary.CopyFrom( _mesh );
-	_temporary.Translate( _position );
+	temporary1.CopyFrom( _mesh );
+	temporary1.Translate( _position );
 
 	temporary2.CopyFrom( _mesh );
 	temporary2.Translate( _position );
 
-	_worldTree.Subtract2( _temporary, temporary2 );
+	_worldTree.Subtract2( temporary1, temporary2 );
 	//	DBGOUT("\nBSP tree after CSG:\n");
 	//	BSP::Debug::PrintTree(worldTree);
 }
-
 
 void CSG::Shoot(
 	const Float3& start,
@@ -222,11 +226,12 @@ void CSG::Shoot(
 	worldTree.CastRay( start, direction, result );
 	if( result.hitAnything )
 	{
+		LogStream(LL_Info) << "Hit pos: " << result.position;
+
 		Subtract(
 			result.position,
 			worldTree,
-			operand,
-			temporary1
+			operand
 		);
 		this->UpdateRenderMesh( worldTree );
 	}
@@ -379,7 +384,7 @@ void CSG::MakeBoxMesh(
 }
 
 void CSG::FlipWinding(
-							TArray< BSP::Vertex > & vertices, TArray< UINT16 > & indices
+					  TArray< BSP::Vertex > & vertices, TArray< UINT16 > & indices
 							)
 {
 	// flip winding to turn the model inside out
@@ -388,5 +393,15 @@ void CSG::FlipWinding(
 	{
 		UINT16 * tri = indices.ToPtr() + i*3;
 		TSwap( tri[0], tri[2] );
+	}
+
+	// flip vertex normals
+	for( int iVertex = 0; iVertex < vertices.Num(); iVertex++ )
+	{
+		UByte4 packed;
+		packed.v = vertices[ iVertex ].N;
+		Float3 N = UnpackNormal( packed );
+		N = Float3_Normalized( Float3_Negate( N ) );
+		vertices[ iVertex ].N = packF4u( N.x, N.y, N.z );
 	}
 }

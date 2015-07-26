@@ -34,11 +34,17 @@ public:
 
 	void RunTestCode();
 
+	//void Subtract(
+	//	const Float3& _position,
+	//	BSP::Tree & _worldTree,
+	//	const BSP::Tree& _mesh,	// subtractive brush (template)
+	//	BSP::Tree & _temporary	// subtractive brush (instance)
+	//);
+
 	void Subtract(
 		const Float3& _position,
 		BSP::Tree & _worldTree,
-		const BSP::Tree& _mesh,	// subtractive brush (template)
-		BSP::Tree & _temporary	// subtractive brush (instance)
+		const BSP::Tree& _mesh	// subtractive brush
 	);
 
 	void Shoot(

@@ -82,7 +82,7 @@ mxBEGIN_REFLECTION(Face)
 mxEND_REFLECTION;
 Face::Face()
 {
-	vertices.SetExternalStorage( buffer, mxCOUNT_OF(buffer) );
+//	vertices.SetExternalStorage( buffer, mxCOUNT_OF(buffer) );
 	next = NIL_INDEX;
 }
 
@@ -653,8 +653,8 @@ FaceID Tree::AddPolygon( const Vertex* points, const int numPoints, FaceID * hea
 	const UINT32 newPolyIndex = m_faces.Num();
 	mxASSERT( newPolyIndex <= BSP_MAX_POLYS );
 	Face &newPoly = m_faces.Add();
-	newPoly.vertices.Empty();
-	newPoly.vertices.Add( points, numPoints );
+	newPoly.vertices.SetNum( numPoints );
+	memcpy( newPoly.vertices.ToPtr(), points, sizeof(points[0]) * numPoints );
 	newPoly.next = *head;
 	*head = newPolyIndex;
 	return newPolyIndex;
@@ -879,6 +879,10 @@ ERet Tree::Build( ATriangleMeshInterface* triangleMesh )
 {
 	const UINT32 startTimeMSec = mxGetTimeInMilliseconds();
 
+	m_planes.Empty();
+	m_nodes.Empty();
+	m_faces.Empty();
+
 	struct CollectTriangles : ATriangleIndexCallback
 	{
 		Tree &	m_tree;
@@ -916,9 +920,9 @@ ERet Tree::Build( ATriangleMeshInterface* triangleMesh )
 
 	stats.m_polysAfter = m_faces.Num();
 
-	m_nodes.Shrink();
-	m_planes.Shrink();
-	m_faces.Shrink();
+	//m_nodes.Shrink();
+	//m_planes.Shrink();
+	//m_faces.Shrink();
 
 	stats.m_numInternalNodes = m_nodes.Num();
 	stats.m_numPlanes = m_planes.Num();

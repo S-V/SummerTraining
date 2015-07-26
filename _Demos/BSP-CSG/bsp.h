@@ -171,7 +171,8 @@ public:
 };
 struct Face : public CStruct
 {
-	TArray< Vertex >	vertices;	//«8/12
+	//TArray< Vertex >	vertices;	//«8/12
+TStaticList< Vertex,36 >	vertices;	//«8/12
 	FaceID				next;		//«2
 	Vertex				buffer[7];	//«224 small embedded storage to avoid memory allocations
 	//«240/244
