@@ -2069,6 +2069,7 @@ void Tree::GenerateMesh(
 	vertices.Empty();
 	indices.Empty();
 	GenerateMesh_R( *this, start, vertices, indices );
+	DBGOUT("GenerateMesh: %d vertices, %d indices", vertices.Num(), indices.Num());
 }
 
 namespace Debug
