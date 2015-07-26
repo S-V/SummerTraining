@@ -1,3 +1,4 @@
+#pragma once
 /*
 some ideas on how to reduce memory consumption:
 - store polygons in 2D (plane is known)
@@ -173,6 +174,7 @@ struct Face : public CStruct
 	TArray< Vertex >	vertices;	//«8/12
 	FaceID				next;		//«2
 	Vertex				buffer[7];	//«224 small embedded storage to avoid memory allocations
+	//«240/244
 public:
 	mxDECLARE_CLASS(Face,CStruct);
 	mxDECLARE_REFLECTION;
@@ -263,7 +265,7 @@ public:
 	void Translate( const Float3& T );
 
 	void GenerateMesh(
-		TArray< BSP::Vertex > &vertices,
+		TArray< Vertex > &vertices,
 		TArray< UINT16 > &indices,
 		const NodeID start = 0
 	) const;
@@ -335,6 +337,13 @@ public:
 	}
 };
 
+void TriangulateFaces(
+					  const Tree& tree,
+					  const FaceID faces,
+					  TArray< Vertex > &vertices,
+					  TArray< UINT16 > &indices
+					  );
+
 NodeID CopySubTree(
 				   Tree & treeA,
 				   const Tree& treeB, const NodeID iNodeB
@@ -344,6 +353,7 @@ namespace Debug
 {
 	void PrintTree( const Tree& tree, const NodeID start = 0 );
 	int CalculateFaceCount( const Tree& tree, const FaceID faces );
+	void PrintFaceList( const Tree& tree, const FaceID faces );
 }//namespace Debug
 
 #if 0

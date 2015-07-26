@@ -9,6 +9,13 @@ https://github.com/299299/NagaGame/blob/master/Source/Game/Engine/Graphics/Debug
 #include "bsp.h"
 #include "debug_draw.h"
 
+static void DbgRemoveFirstPoly( BSP::Tree& worldTree, BSP::NodeID nodeIndex )
+{
+	BSP::Node& node = worldTree.m_nodes[ nodeIndex ];
+	BSP::Face& face = worldTree.m_faces[ node.faces ];
+	node.faces = face.next;
+}
+
 static bgfx::DynamicVertexBufferHandle g_dynamicVB = BGFX_INVALID_HANDLE;
 static bgfx::DynamicIndexBufferHandle g_dynamicIB = BGFX_INVALID_HANDLE;
 
@@ -125,9 +132,8 @@ static void Subtract(
 	temporary.CopyFrom( mesh );
 	temporary.Translate( position );
 	worldTree.Subtract( temporary );
-
-	DBGOUT("\nBSP tree after CSG:\n");
-	BSP::Debug::PrintTree(worldTree);
+//	DBGOUT("\nBSP tree after CSG:\n");
+//	BSP::Debug::PrintTree(worldTree);
 }
 
 static void GenerateMesh(
@@ -146,6 +152,7 @@ ERet MyEntryPoint()
 	FileLogUtil		fileLog;
 
 
+	DBGOUT("sizeof(Node)=%d, sizeof(Face)=%d", sizeof(BSP::Node), sizeof(BSP::Face));
 
 
 	BSP::Vertex::init();
@@ -156,9 +163,14 @@ ERet MyEntryPoint()
 	DebugDrawManager	debugDraw;
 	debugDraw.init( renderer.debugProgram );
 
+
 	g_dynamicVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	g_dynamicIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
 
+
+	DynamicMesh	debugWireframe;
+	debugWireframe.hVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
+	debugWireframe.hIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
 
 
 	// Build a BSP tree for the destructible environment.
@@ -217,7 +229,8 @@ ERet MyEntryPoint()
 
 	BSP::Tree	operand;
 	{
-		MakeBoxMesh( 50.0f, 50.0f, 50.0f, rawVertices, rawIndices );
+		//MakeBoxMesh( 70.0f, 200.0f, 70.0f, rawVertices, rawIndices );
+		MakeBoxMesh( 20.0f, 30.0f, 20.0f, rawVertices, rawIndices );
 
 		// flip winding to turn the model inside out
 		{
@@ -255,8 +268,11 @@ ERet MyEntryPoint()
 
 
 
+	DBGOUT("\nPolygons before CSG:\n");
+	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
 
-#if 1
+
+#if 0
 	{
 		Float3 pos = Float3_Set(0,-10,0);
 #if 1
@@ -271,14 +287,15 @@ ERet MyEntryPoint()
 		temporary.Translate( pos );
 		//worldTree.CopyFrom( temporary );
 		worldTree.m_nodes[0].back = BSP::CopySubTree(worldTree, temporary, 0);
-#endif
 		BSP::Debug::PrintTree(worldTree);
+#endif
 	}
 #endif
 
 
 
 
+#if 1
 #if 1
 	GenerateMesh(
 		worldTree, 0,
@@ -304,13 +321,31 @@ ERet MyEntryPoint()
 		);
 	}
 #endif
+#endif
 
 
 
+#if 0
+	DBGOUT("\nPolygons after CSG:\n");
+	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
+	// 12 -> 11 -> 10 -> 9 -> 8
+	DbgRemoveFirstPoly( worldTree, 0 );
+	DbgRemoveFirstPoly( worldTree, 0 );
+	DbgRemoveFirstPoly( worldTree, 0 );
+
+	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
 
 
-
-
+	{
+		rawVertices.Empty();
+		rawIndices.Empty();
+		TriangulateFaces(
+			worldTree, worldTree.m_nodes[0].faces,
+			rawVertices, rawIndices
+			);
+		UpdateRenderMesh( rawVertices.ToPtr(), rawVertices.Num(), rawIndices.ToPtr(), rawIndices.Num() );
+	}
+#endif
 
 
 	// Imgui.
@@ -488,6 +523,10 @@ ERet MyEntryPoint()
 
 		debugDraw.draw();
 
+
+		//renderer.DrawWireframe(rawVertices,rawIndices);
+
+
 		renderer.EndFrame();
 
 		if( !!mouseState.m_buttons[entry::MouseButton::Left] )
@@ -500,6 +539,7 @@ ERet MyEntryPoint()
 				DBGOUT("Shooting");
 				lastTimeShot = now;
 
+#if 1
 				Float3 rayPos, lookAt, rayDir;
 				cameraGetPosition((float*)&rayPos);
 				cameraGetAt((float*)&lookAt);
@@ -521,6 +561,21 @@ ERet MyEntryPoint()
 						rawVertices, rawIndices
 					);
 				}
+#else
+				Float3 pos = Float3_Set(0,-10,0);
+
+				Subtract(
+					pos,
+					worldTree,
+					operand,
+					temporary
+					);
+
+				GenerateMesh(
+					worldTree, 0,
+					rawVertices, rawIndices
+				);
+#endif
 			}		
 		}
 	}
@@ -529,6 +584,8 @@ ERet MyEntryPoint()
 	cameraDestroy();
 	imguiDestroy();
 
+	bgfx::destroyDynamicVertexBuffer( debugWireframe.hVB  );
+	bgfx::destroyDynamicIndexBuffer( debugWireframe.hIB  );
 
 	bgfx::destroyDynamicIndexBuffer( g_dynamicIB );
 	bgfx::destroyDynamicVertexBuffer( g_dynamicVB );

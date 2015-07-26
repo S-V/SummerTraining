@@ -13,6 +13,8 @@
 #include "camera.h"
 #include "bounds.h"
 
+#include "bsp.h"
+
 #define RENDER_PASS_GEOMETRY_ID       0
 #define RENDER_PASS_LIGHT_ID          1
 #define RENDER_PASS_GLOBAL_LIGHT      2
@@ -106,6 +108,84 @@ extern const uint16_t s_cubeIndices[36];
 ERet screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf, bool _originBottomLeft, float _width = 1.0f, float _height = 1.0f, float zz = 0.0f);
 
 
+
+struct DynamicMesh
+{
+	bgfx::DynamicVertexBufferHandle hVB;
+	bgfx::DynamicIndexBufferHandle hIB;
+};
+
+namespace bgfx
+{
+struct MyCallback : public CallbackI
+{
+	virtual ~MyCallback()
+	{
+	}
+
+	virtual void traceVargs(const char* _filePath, uint16_t _line, const char* _format, va_list _argList) BX_OVERRIDE
+	{
+		dbgPrintf("%s (%d): ", _filePath, _line);
+		dbgPrintfVargs(_format, _argList);
+	}
+
+	virtual void fatal(Fatal::Enum _code, const char* _str) BX_OVERRIDE
+	{
+		if (Fatal::DebugCheck != _code)
+		{
+			BX_TRACE("0x%08x: %s", _code, _str);
+			BX_UNUSED(_code, _str);
+		}
+		ptDBG_BREAK;
+	}
+
+	virtual uint32_t cacheReadSize(uint64_t /*_id*/) BX_OVERRIDE
+	{
+		return 0;
+	}
+
+	virtual bool cacheRead(uint64_t /*_id*/, void* /*_data*/, uint32_t /*_size*/) BX_OVERRIDE
+	{
+		return false;
+	}
+
+	virtual void cacheWrite(uint64_t /*_id*/, const void* /*_data*/, uint32_t /*_size*/) BX_OVERRIDE
+	{
+	}
+
+	virtual void screenShot(const char* _filePath, uint32_t _width, uint32_t _height, uint32_t _pitch, const void* _data, uint32_t _size, bool _yflip) BX_OVERRIDE
+	{
+		BX_UNUSED(_filePath, _width, _height, _pitch, _data, _size, _yflip);
+
+#if 0//BX_CONFIG_CRT_FILE_READER_WRITER
+		char* filePath = (char*)alloca(strlen(_filePath)+5);
+		strcpy(filePath, _filePath);
+		strcat(filePath, ".tga");
+
+		bx::CrtFileWriter writer;
+		if (0 == writer.open(filePath) )
+		{
+			imageWriteTga(&writer, _width, _height, _pitch, _data, false, _yflip);
+			writer.close();
+		}
+#endif // BX_CONFIG_CRT_FILE_READER_WRITER
+	}
+
+	virtual void captureBegin(uint32_t /*_width*/, uint32_t /*_height*/, uint32_t /*_pitch*/, TextureFormat::Enum /*_format*/, bool /*_yflip*/) BX_OVERRIDE
+	{
+		BX_TRACE("Warning: using capture without callback (a.k.a. pointless).");
+	}
+
+	virtual void captureEnd() BX_OVERRIDE
+	{
+	}
+
+	virtual void captureFrame(const void* /*_data*/, uint32_t /*_size*/) BX_OVERRIDE
+	{
+	}
+};
+}//namespace bgfx
+
 class Renderer
 {
 public:
@@ -160,6 +240,8 @@ public:
 	bgfx::FrameBufferHandle gbuffer;
 	bgfx::FrameBufferHandle lightBuffer;
 
+	bgfx::MyCallback	callback;
+
 public:
 	Renderer();
 	ERet Initialize();
@@ -167,6 +249,10 @@ public:
 
 	ERet BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, const float view[16], float time );
 	ERet EndFrame();
+
+	ERet DrawWireframe( const TArray< BSP::Vertex >& vertices, const TArray< UINT16 >& indices );
+
+	void DrawWireframe( const DynamicMesh& mesh );
 };
 
 extern bool animateMesh;

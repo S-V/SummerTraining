@@ -806,6 +806,16 @@ static EPlaneSide ClassifyFaces( int total, int sides[4] )
 	}
 	return PLANESIDE_CROSS;
 }
+static void PrintStats( ATextStream& log, int total, int sides[4] )
+{
+	log
+		<< "Front: " << sides[PLANESIDE_FRONT]
+		<< ", Back: " << sides[PLANESIDE_BACK]
+		<< ", Split: " << sides[PLANESIDE_CROSS]
+		<< ", Coplanar: " << sides[PLANESIDE_ON]
+		<< " (Total: " << total << ")"
+		;
+}
 
 // returns index of new node
 //
@@ -1485,24 +1495,23 @@ NodeID CopySubTree(
 				   const Tree& treeB, const NodeID iNodeB
 				   )
 {
-	DBGOUT("CopySubTree: %d",GET_PAYLOAD(iNodeB));
+	//DBGOUT("CopySubTree: %d",GET_PAYLOAD(iNodeB));
 	NodeID newRootId = 0;
 	if( IS_INTERNAL( iNodeB ) )
 	{
 		const Node& rNodeB = treeB.m_nodes[ iNodeB ];
 		const Vector4& rPlaneB = treeB.m_planes[ rNodeB.plane ];
 
-		// Copy planes.
+		// Copy the plane.
 		const int iNewPlaneA = GetPlaneIndex( treeA, rPlaneB );
 
-		// Copy nodes.
+		// Copy the node.
 		newRootId = treeA.NewNode();
 		Node &rNodeA = treeA.m_nodes[ newRootId ];
 
 		rNodeA.plane = iNewPlaneA;
 
-
-		// Copy polygons.
+		// Copy the polygons lying in the plane of the node.
 		rNodeA.faces = NIL_INDEX;
 
 		FaceID iFaceB = rNodeB.faces;
@@ -1520,7 +1529,7 @@ NodeID CopySubTree(
 			iFaceB = rFaceB.next;
 		}
 
-
+		// Recurse into the children.
 		treeA.m_nodes[ newRootId ].front = CopySubTree( treeA, treeB, rNodeB.front );
 		treeA.m_nodes[ newRootId ].back = CopySubTree( treeA, treeB, rNodeB.back );
 	}
@@ -1745,8 +1754,9 @@ static FaceID ClipFacesOutsideBrush(
 }
 
 static void ClipFacesOutsideBrush_R2(
-									Tree & treeA, const FaceID facesA, TArray< Face >& newFaces,
-									const Tree& treeB, const NodeID iNodeB, const AABB24& boundsB
+									Tree & treeA, const FaceID facesA,
+									const Tree& treeB, const NodeID iNodeB, const AABB24& boundsB,
+									TArray< Face >& newFaces
 								 )
 {
 	if( IS_INTERNAL( iNodeB ) )
@@ -1759,17 +1769,18 @@ static void ClipFacesOutsideBrush_R2(
 		FaceID	coplanar = NIL_INDEX;
 		int		faceCounts[4] = {0};
 int polysbefore = treeA.m_faces.Num();
-		treeA.PartitionPolygons(
+		const int totalCount = treeA.PartitionPolygons(
 			planeB, facesA, &frontFaces, &backFaces, &coplanar, faceCounts
 		);
 
+		PrintStats(LogStream(LL_Info), totalCount, faceCounts);
 //		DBGOUT("ClipFacesOutsideBrush_R: polys %d -> %d", polysbefore, treeA.m_faces.Num());
 
 		if( frontFaces != NIL_INDEX ) {
-			ClipFacesOutsideBrush_R2( treeA, frontFaces, newFaces, treeB, rNodeB.front, boundsB );
+			ClipFacesOutsideBrush_R2( treeA, frontFaces, treeB, rNodeB.front, boundsB, newFaces );
 		}
 		if( backFaces != NIL_INDEX ) {
-			ClipFacesOutsideBrush_R2( treeA, backFaces, newFaces, treeB, rNodeB.back, boundsB );
+			ClipFacesOutsideBrush_R2( treeA, backFaces, treeB, rNodeB.back, boundsB, newFaces );
 		}
 	}
 	else
@@ -1789,13 +1800,51 @@ int polysbefore = treeA.m_faces.Num();
 }
 
 static void ClipFacesOutsideBrush2(
+								   Tree & treeA, const FaceID facesA,
+								   const Tree& treeB, const NodeID iNodeB,
+								   TArray< Face >& newFaces
+								   )
+{
+	mxASSERT(IS_INTERNAL(iNodeB));
+	const AABB24 boundsB = CalculateNodeBounds( treeB, iNodeB );
+	ClipFacesOutsideBrush_R2( treeA, facesA, treeB, iNodeB, boundsB, newFaces );
+}
+
+static void ClipFacesOutsideBrush3(
 								  Tree & treeA, const FaceID facesA, TArray< Face >& newFaces,
 								  const Tree& treeB, const NodeID iNodeB
 								 )
 {
 	mxASSERT(IS_INTERNAL(iNodeB));
 	const AABB24 boundsB = CalculateNodeBounds( treeB, iNodeB );
-	ClipFacesOutsideBrush_R2( treeA, facesA, newFaces, treeB, iNodeB, boundsB );
+
+int polysbefore = Debug::CalculateFaceCount(treeA,facesA);
+
+	FaceID resulingFaces = facesA;
+
+	for( int iPlane = 0; iPlane < treeB.m_planes.Num(); iPlane++ )
+	{
+		int		faceCounts[4] = {0};
+		FaceID	backFaces = NIL_INDEX;
+		treeA.PartitionPolygons( treeB.m_planes[iPlane], resulingFaces, NULL, &backFaces, NULL, faceCounts );
+		int ffsfspolysbefore = Debug::CalculateFaceCount(treeA,backFaces);
+resulingFaces = backFaces;
+		//if( backFaces != NIL_INDEX )
+		//{
+		//	//Face & face = treeA.m_faces[ iFace ];
+		//	resulingFaces = backFaces;
+		//}
+	}
+
+	DBGOUT("ClipFacesOutsideBrush3: polys %d -> %d", polysbefore, newFaces.Num());
+
+	for( FaceID iFace = resulingFaces; iFace != NIL_INDEX; )
+	{
+		const Face & face = treeA.m_faces[ iFace ];
+		const FaceID iNext = face.next;
+		newFaces.Add(face);
+		iFace = iNext;
+	}
 }
 
 
@@ -1810,15 +1859,15 @@ static NodeID MergeSubtract( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID i
 		const Vector4& plane = treeA.m_planes[ planeA ];
 
 		// Clip this node's polygons with the other tree.
-		const FaceID faceListA = nodeA.faces;
-		nodeA.faces = NIL_INDEX;
-//		ClipFacesWithConvexBrush( treeA, faceListA, &nodeA.faces, treeB, iNodeB );
-//		nodeA.faces = ClipFacesOutsideBrush( treeA, faceListA, treeB, iNodeB );
+//		ClipFacesWithConvexBrush( treeA, nodeA.faces, &nodeA.faces, treeB, iNodeB );
+//		nodeA.faces = ClipFacesOutsideBrush( treeA, nodeA.faces, treeB, iNodeB );
 		{
 			TArray< Face > newFaces;
-			int polysbefore = Debug::CalculateFaceCount(treeA,faceListA);
-			ClipFacesOutsideBrush2( treeA, faceListA, newFaces, treeB, iNodeB );
+			int polysbefore = Debug::CalculateFaceCount(treeA,nodeA.faces);
+			//ClipFacesOutsideBrush3( treeA, nodeA.faces, newFaces, treeB, 0 );
+			ClipFacesOutsideBrush2( treeA, nodeA.faces, treeB, 0, newFaces );
 			DBGOUT("ClipFacesOutsideBrush_R: polys %d -> %d", polysbefore, newFaces.Num());
+			nodeA.faces = NIL_INDEX;
 			for( int i = 0; i < newFaces.Num(); i++ )
 			{
 				treeA.AddPolygon(newFaces[i].vertices.ToPtr(), newFaces[i].vertices.Num(), &nodeA.faces);
@@ -1854,8 +1903,15 @@ NODE_TYPE tb1 = GET_TYPE(newNodeA_back);
 	return iNodeA;
 }
 
+static void DbgPrintAddresses( const Tree& tree )
+{
+	DBGOUT("Nodes: 0x%x, Planes: 0x%x, Faces: 0x%x", tree.m_nodes.ToPtr(), tree.m_planes.ToPtr(), tree.m_faces.ToPtr());
+}
+
 void Tree::Subtract( Tree& other )
 {
+	DbgPrintAddresses(*this);
+	DbgPrintAddresses(other);
 	NodeID rootId = MergeSubtract( *this, 0, other, 0 );
 }
 
@@ -1903,9 +1959,57 @@ void Tree::Translate( const Float3& T )
 	}
 }
 
+void TriangulateFaces(
+					  const Tree& tree,
+					  const FaceID faces,
+					  TArray< Vertex > &vertices,
+					  TArray< UINT16 > &indices
+					  )
+{
+	FaceID iFaceId = faces;
+	while( iFaceId != NIL_INDEX )
+	{
+		const Face& face = tree.m_faces[ iFaceId ];
+		mxASSERT( face.vertices.Num() >= 3 );
+
+		const int numTriangles = face.vertices.Num() - 2;
+
+		// Triangulate the current convex polygon...
+
+		const Vertex& basePoint = face.vertices[ 0 ];
+#if 0
+		const UINT16 iBasePoint = vertices.Num();
+		vertices.Add( basePoint );
+
+		for ( int i = 1; i < numTriangles + 1; i++ )
+		{
+			vertices.Add( face.vertices[ i ] );
+			vertices.Add( face.vertices[ i+1 ] );
+
+			indices.Add( iBasePoint );
+			indices.Add( iBasePoint + i );
+			indices.Add( iBasePoint + i + 1 );
+		}
+#else
+		for ( int i = 1; i < numTriangles + 1; i++ )
+		{
+			const UINT16 iBasePoint = vertices.Num();
+			vertices.Add( basePoint );
+			vertices.Add( face.vertices[ i ] );
+			vertices.Add( face.vertices[ i+1 ] );
+
+			indices.Add( iBasePoint );
+			indices.Add( iBasePoint + 1 );
+			indices.Add( iBasePoint + 2 );
+		}
+#endif
+		iFaceId = face.next;
+	}
+}
+
 static void GenerateMesh_R(
 						   const Tree& tree, const NodeID nodeId,
-						   TArray< BSP::Vertex > &vertices, TArray< UINT16 > &indices
+						   TArray< Vertex > &vertices, TArray< UINT16 > &indices
 						   )
 {
 	if( IS_INTERNAL( nodeId ) )
@@ -1918,50 +2022,12 @@ static void GenerateMesh_R(
 		GenerateMesh_R( tree, node.back, vertices, indices );
 
 		// Loop through all faces of this node.
-		FaceID iFaceId = node.faces;
-		while( iFaceId != NIL_INDEX )
-		{
-			const Face& face = tree.m_faces[ iFaceId ];
-			mxASSERT( face.vertices.Num() >= 3 );
-
-			const int numTriangles = face.vertices.Num() - 2;
-
-			// Triangulate the current convex polygon...
-
-			const Vertex& basePoint = face.vertices[ 0 ];
-#if 0
-			const UINT16 iBasePoint = vertices.Num();
-			vertices.Add( basePoint );
-
-			for ( int i = 1; i < numTriangles + 1; i++ )
-			{
-				vertices.Add( face.vertices[ i ] );
-				vertices.Add( face.vertices[ i+1 ] );
-
-				indices.Add( iBasePoint );
-				indices.Add( iBasePoint + i );
-				indices.Add( iBasePoint + i + 1 );
-			}
-#else
-			for ( int i = 1; i < numTriangles + 1; i++ )
-			{
-				const UINT16 iBasePoint = vertices.Num();
-				vertices.Add( basePoint );
-				vertices.Add( face.vertices[ i ] );
-				vertices.Add( face.vertices[ i+1 ] );
-
-				indices.Add( iBasePoint );
-				indices.Add( iBasePoint + 1 );
-				indices.Add( iBasePoint + 2 );
-			}
-#endif
-			iFaceId = face.next;
-		}
+		TriangulateFaces( tree, node.faces, vertices, indices );
 	}
 }
 
 void Tree::GenerateMesh(
-						TArray< BSP::Vertex > &vertices,
+						TArray< Vertex > &vertices,
 						TArray< UINT16 > &indices,
 						const NodeID start
 						) const
@@ -1984,6 +2050,20 @@ namespace Debug
 			iFaceId = face.next;
 		}
 		return result;
+	}
+	void PrintFaceList( const Tree& tree, const FaceID faces )
+	{
+		LogStream log(LL_Debug);
+		FaceID iFaceId = faces;
+		while( iFaceId != NIL_INDEX )
+		{
+			const Face& face = tree.m_faces[ iFaceId ];
+			log << iFaceId;
+			if( face.next != NIL_INDEX ) {
+				log << " -> ";
+			}
+			iFaceId = face.next;
+		}
 	}
 	static const String32 NodeID_To_String( const NodeID nodeIndex )
 	{

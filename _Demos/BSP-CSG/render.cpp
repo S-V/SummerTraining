@@ -148,7 +148,12 @@ ERet Renderer::Initialize()
 	debug = BGFX_DEBUG_TEXT;
 	reset = BGFX_RESET_VSYNC;
 
-	bgfx::init();
+	bgfx::init(
+		bgfx::RendererType::Direct3D9,
+		BGFX_PCI_ID_NONE,
+		0,
+		&callback
+	);
 
 	// Get renderer capabilities info.
 	const bgfx::Caps* caps = bgfx::getCaps();
@@ -290,6 +295,7 @@ void Renderer::Shutdown()
 	bgfx::destroyProgram(combineProgram);
 	bgfx::destroyProgram(debugProgram);
 	bgfx::destroyProgram(lineProgram);
+	bgfx::destroyProgram(forwardProgram);
 
 	bgfx::destroyTexture(textureColor);
 	bgfx::destroyTexture(textureNormal);
@@ -752,6 +758,125 @@ ERet Renderer::EndFrame()
 	return ALL_OK;
 }
 
+ERet Renderer::DrawWireframe( const TArray< BSP::Vertex >& vertices, const TArray< UINT16 >& indices )
+{
+#if 0
+	const int numVertices = vertices.Num();
+	const int numTriangles = indices.Num() / 3;
+	const int numIndices = numTriangles * 3 * 2;
+
+	bgfx::TransientVertexBuffer vb;
+	bgfx::TransientIndexBuffer ib;
+
+	if( bgfx::allocTransientBuffers( &vb, BSP::Vertex::ms_decl, numVertices, &ib, numIndices ) )
+	{
+		BSP::Vertex* vertexData = (BSP::Vertex*)vb.data;
+		UINT16* indexData = (UINT16*)ib.data;
+
+		for( int iVertex = 0; iVertex < numVertices; iVertex++ )
+		{
+			vertexData[ iVertex ] = vertices[ iVertex ];
+		}
+		for( int iTriangle = 0; iTriangle < numTriangles; iTriangle++ )
+		{
+			const int base = iTriangle * 3;
+			const UINT16* tri = indices.ToPtr() + base;
+			indexData[ base*2 + 0 ] = tri[0];
+			indexData[ base*2 + 1 ] = tri[1];
+			indexData[ base*2 + 2 ] = tri[1];
+			indexData[ base*2 + 3 ] = tri[2];
+			indexData[ base*2 + 4 ] = tri[2];
+			indexData[ base*2 + 5 ] = tri[0];
+		}
+
+		bgfx::setVertexBuffer(&vb);
+		bgfx::setIndexBuffer(&ib);
+
+		bgfx::setTexture(0, s_texColor,  textureColor);
+		bgfx::setTexture(1, s_texNormal, textureNormal);
+
+		bgfx::setState(0
+			| BGFX_STATE_RGB_WRITE
+			| BGFX_STATE_ALPHA_WRITE
+			| BGFX_STATE_PT_LINES
+			//| BGFX_STATE_CULL_CCW
+			//| BGFX_STATE_DEPTH_TEST_LEQUAL
+			| BGFX_STATE_DEPTH_TEST_ALWAYS
+			| BGFX_STATE_MSAA
+			);
+
+		bgfx::submit(RENDER_PASS_GEOMETRY_ID, lineProgram);
+
+		return ALL_OK;
+	}
+#endif
+
+	const int numVertices = vertices.Num() * 2;
+	const int numTriangles = indices.Num() / 3;
+
+	bgfx::TransientVertexBuffer vb;
+	if( bgfx::checkAvailTransientVertexBuffer( numVertices, BSP::Vertex::ms_decl ) )
+	{
+		bgfx::allocTransientVertexBuffer( &vb, numVertices, BSP::Vertex::ms_decl );
+		BSP::Vertex* vertexData = (BSP::Vertex*)vb.data;
+
+		for( int iTriangle = 0; iTriangle < numTriangles; iTriangle++ )
+		{
+			const int base = iTriangle * 3;
+			const UINT16* tri = indices.ToPtr() + base;
+
+			*vertexData++ = vertices[tri[0]];
+			*vertexData++ = vertices[tri[1]];
+			*vertexData++ = vertices[tri[1]];
+			*vertexData++ = vertices[tri[2]];
+			*vertexData++ = vertices[tri[2]];
+			*vertexData++ = vertices[tri[0]];
+		}
+
+		bgfx::setVertexBuffer(&vb);
+
+		bgfx::setTexture(0, s_texColor,  textureColor);
+		bgfx::setTexture(1, s_texNormal, textureNormal);
+
+		bgfx::setState(0
+			| BGFX_STATE_RGB_WRITE
+			| BGFX_STATE_ALPHA_WRITE
+			| BGFX_STATE_PT_LINES
+			//| BGFX_STATE_CULL_CCW
+			//| BGFX_STATE_DEPTH_TEST_LEQUAL
+			| BGFX_STATE_DEPTH_TEST_ALWAYS
+			| BGFX_STATE_MSAA
+			);
+
+		bgfx::submit(RENDER_PASS_GEOMETRY_ID, lineProgram);
+
+		return ALL_OK;
+	}
+
+	return ERR_OUT_OF_MEMORY;
+}
+
+#if 0
+void Renderer::Draw( const DynamicMesh& mesh )
+{
+	bgfx::setVertexBuffer(mesh.hVB);
+	bgfx::setIndexBuffer(mesh.hIB);
+
+	bgfx::setTexture(0, s_texColor,  textureColor);
+	bgfx::setTexture(1, s_texNormal, textureNormal);
+
+	bgfx::setState(0
+		| BGFX_STATE_RGB_WRITE
+		| BGFX_STATE_ALPHA_WRITE
+		| BGFX_STATE_CULL_CCW
+		| BGFX_STATE_DEPTH_WRITE
+		| BGFX_STATE_DEPTH_TEST_LESS
+		| BGFX_STATE_MSAA
+		);
+
+	bgfx::submit(RENDER_PASS_GEOMETRY_ID, geomProgram);
+}
+#endif
 
 bool animateMesh = false;
 bool showScissorRects = false;
