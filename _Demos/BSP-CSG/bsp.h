@@ -260,6 +260,7 @@ public:
 	void CopyFrom( const Tree& other );
 
 	void Subtract( Tree& other );
+	void Subtract2( Tree& other, const Tree& temp );
 
 	void Negate();
 	void Translate( const Float3& T );
@@ -348,6 +349,11 @@ NodeID CopySubTree(
 				   Tree & treeA,
 				   const Tree& treeB, const NodeID iNodeB
 				   );
+
+FaceID ClipFacesOutsideBrush(
+								  Tree & treeA, const FaceID facesA,
+								  const Tree& treeB, const NodeID iNodeB
+								 );
 
 namespace Debug
 {

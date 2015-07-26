@@ -1741,7 +1741,7 @@ int polysbefore = treeA.m_faces.Num();
 	}
 }
 
-static FaceID ClipFacesOutsideBrush(
+FaceID ClipFacesOutsideBrush(
 								  Tree & treeA, const FaceID facesA,
 								  const Tree& treeB, const NodeID iNodeB
 								 )
@@ -1860,19 +1860,19 @@ static NodeID MergeSubtract( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID i
 
 		// Clip this node's polygons with the other tree.
 //		ClipFacesWithConvexBrush( treeA, nodeA.faces, &nodeA.faces, treeB, iNodeB );
-//		nodeA.faces = ClipFacesOutsideBrush( treeA, nodeA.faces, treeB, iNodeB );
-		{
-			TArray< Face > newFaces;
-			int polysbefore = Debug::CalculateFaceCount(treeA,nodeA.faces);
-			//ClipFacesOutsideBrush3( treeA, nodeA.faces, newFaces, treeB, 0 );
-			ClipFacesOutsideBrush2( treeA, nodeA.faces, treeB, 0, newFaces );
-			DBGOUT("ClipFacesOutsideBrush_R: polys %d -> %d", polysbefore, newFaces.Num());
-			nodeA.faces = NIL_INDEX;
-			for( int i = 0; i < newFaces.Num(); i++ )
-			{
-				treeA.AddPolygon(newFaces[i].vertices.ToPtr(), newFaces[i].vertices.Num(), &nodeA.faces);
-			}
-		}
+		nodeA.faces = ClipFacesOutsideBrush( treeA, nodeA.faces, treeB, 0 );
+		//{
+		//	TArray< Face > newFaces;
+		//	int polysbefore = Debug::CalculateFaceCount(treeA,nodeA.faces);
+		//	//ClipFacesOutsideBrush3( treeA, nodeA.faces, newFaces, treeB, 0 );
+		//	ClipFacesOutsideBrush2( treeA, nodeA.faces, treeB, 0, newFaces );
+		//	DBGOUT("ClipFacesOutsideBrush_R: polys %d -> %d", polysbefore, newFaces.Num());
+		//	nodeA.faces = NIL_INDEX;
+		//	for( int i = 0; i < newFaces.Num(); i++ )
+		//	{
+		//		treeA.AddPolygon(newFaces[i].vertices.ToPtr(), newFaces[i].vertices.Num(), &nodeA.faces);
+		//	}
+		//}
 
 		const NodeID nodeA_front = nodeA.front;
 		const NodeID nodeA_back = nodeA.back;
@@ -1903,16 +1903,50 @@ NODE_TYPE tb1 = GET_TYPE(newNodeA_back);
 	return iNodeA;
 }
 
-static void DbgPrintAddresses( const Tree& tree )
-{
-	DBGOUT("Nodes: 0x%x, Planes: 0x%x, Faces: 0x%x", tree.m_nodes.ToPtr(), tree.m_planes.ToPtr(), tree.m_faces.ToPtr());
-}
-
 void Tree::Subtract( Tree& other )
 {
-	DbgPrintAddresses(*this);
-	DbgPrintAddresses(other);
 	NodeID rootId = MergeSubtract( *this, 0, other, 0 );
+}
+
+// computes boolean A - B
+static NodeID MergeSubtract2( Tree & treeA, NodeID iNodeA, Tree & treeB, NodeID iNodeB, const Tree & temp )
+{
+	if( IS_INTERNAL( iNodeA ) )
+	{
+		Node& nodeA = treeA.m_nodes[ iNodeA ];
+		const UINT16 planeA = nodeA.plane;
+		const Vector4& plane = treeA.m_planes[ planeA ];
+
+		nodeA.faces = ClipFacesOutsideBrush( treeA, nodeA.faces, temp, 0 );
+
+		const NodeID nodeA_front = nodeA.front;
+		const NodeID nodeA_back = nodeA.back;
+
+		NodeID nodeB_front = NIL_INDEX;
+		NodeID nodeB_back = NIL_INDEX;
+		const EPlaneSide side = treeB.PartitionNodeWithPlane( plane, iNodeB, &nodeB_front, &nodeB_back );
+
+		const NodeID newNodeA_front = MergeSubtract2( treeA, nodeA_front, treeB, nodeB_front, temp );
+		const NodeID newNodeA_back = MergeSubtract2( treeA, nodeA_back, treeB, nodeB_back, temp );
+
+		nodeA = treeA.m_nodes[ iNodeA ];
+		treeA.m_nodes[ iNodeA ].front = newNodeA_front;
+		treeA.m_nodes[ iNodeA ].back = newNodeA_back;
+	}
+	else
+	{
+		// this is a leaf node
+		if( IS_SOLID_LEAF( iNodeA ) )
+		{
+			return CopySubTree( treeA, treeB, iNodeB );
+		}
+		// empty space - do nothing
+	}
+	return iNodeA;
+}
+void Tree::Subtract2( Tree& other, const Tree& temp )
+{
+	NodeID rootId = MergeSubtract2( *this, 0, other, 0, temp );
 }
 
 void Tree::CopyFrom( const Tree& other )

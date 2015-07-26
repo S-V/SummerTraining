@@ -229,8 +229,8 @@ ERet MyEntryPoint()
 
 	BSP::Tree	operand;
 	{
-		//MakeBoxMesh( 70.0f, 200.0f, 70.0f, rawVertices, rawIndices );
-		MakeBoxMesh( 20.0f, 30.0f, 20.0f, rawVertices, rawIndices );
+		MakeBoxMesh( 70.0f, 200.0f, 70.0f, rawVertices, rawIndices );
+		//MakeBoxMesh( 20.0f, 30.0f, 20.0f, rawVertices, rawIndices );
 
 		// flip winding to turn the model inside out
 		{
@@ -268,20 +268,25 @@ ERet MyEntryPoint()
 
 
 
+
 	DBGOUT("\nPolygons before CSG:\n");
 	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
 
 
-#if 0
+#if 1
 	{
 		Float3 pos = Float3_Set(0,-10,0);
 #if 1
-		Subtract(
-			pos,
-			worldTree,
-			operand,
-			temporary
-			);
+		//Subtract(
+		//	pos,
+		//	worldTree,
+		//	operand,
+		//	temporary
+		//	);
+
+		temporary.CopyFrom( operand );
+		worldTree.Subtract2( temporary, operand );
+
 #else
 		temporary.CopyFrom( operand );
 		temporary.Translate( pos );
@@ -326,14 +331,33 @@ ERet MyEntryPoint()
 
 
 #if 0
+	{
+		BSP::FaceID clippedFaces = ClipFacesOutsideBrush(
+			worldTree, worldTree.m_nodes[0].faces,
+			operand, 0
+			);
+
+		BSP::Debug::PrintFaceList(worldTree, clippedFaces);
+		{
+			rawVertices.Empty();
+			rawIndices.Empty();
+			TriangulateFaces(
+				worldTree, clippedFaces,
+				rawVertices, rawIndices
+				);
+			UpdateRenderMesh( rawVertices.ToPtr(), rawVertices.Num(), rawIndices.ToPtr(), rawIndices.Num() );
+		}
+	}
+
+#if 0
 	DBGOUT("\nPolygons after CSG:\n");
 	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
 	// 12 -> 11 -> 10 -> 9 -> 8
-	DbgRemoveFirstPoly( worldTree, 0 );
-	DbgRemoveFirstPoly( worldTree, 0 );
-	DbgRemoveFirstPoly( worldTree, 0 );
 
-	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
+	//DbgRemoveFirstPoly( worldTree, 0 );
+	//DbgRemoveFirstPoly( worldTree, 0 );
+	//DbgRemoveFirstPoly( worldTree, 0 );
+	//BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
 
 
 	{
@@ -345,6 +369,7 @@ ERet MyEntryPoint()
 			);
 		UpdateRenderMesh( rawVertices.ToPtr(), rawVertices.Num(), rawIndices.ToPtr(), rawIndices.Num() );
 	}
+#endif
 #endif
 
 
