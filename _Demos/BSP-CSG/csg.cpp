@@ -95,7 +95,7 @@ void CSG::RunTestCode()
 {
 	DBGOUT("\nPolygons before CSG:\n");
 	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
-#if 1
+#if 0
 	{
 		Float3 pos = Float3_Set(40,0,20);
 #if 1
@@ -106,18 +106,25 @@ void CSG::RunTestCode()
 		//	temporary1
 		//	);
 
-		MakeBoxMesh( 50.0f, 20.0f, 50.0f, vertices, indices );
+		MakeBoxMesh( 50.0f, 10.0f, 50.0f, vertices, indices );
 		Build_BSP_Tree( vertices, indices, worldTree );
 
 		BSP::Tree subtractiveModel;
 		//MakeBoxMesh( 70.0f, 200.0f, 70.0f, vertices, indices );
-		MakeBoxMesh( 20.0f, 100.0f, 10.0f, vertices, indices );
+		MakeBoxMesh( 20.0f, 50.0f, 10.0f, vertices, indices );
 		FlipWinding( vertices, indices );
 		Build_BSP_Tree( vertices, indices, subtractiveModel );
 
 		temporary1.CopyFrom( subtractiveModel );
 		temporary2.CopyFrom( subtractiveModel );
 		worldTree.Subtract2( temporary1, temporary2 );
+
+
+		subtractiveModel.Translate(Float3_Set(10,0,10));
+		temporary1.CopyFrom( subtractiveModel );
+		temporary2.CopyFrom( subtractiveModel );
+		worldTree.Subtract2( temporary1, temporary2 );
+
 
 #else
 		temporary1.CopyFrom( operand );
@@ -246,8 +253,8 @@ void CSG::Draw( Renderer & renderer )
 	bgfx::setVertexBuffer(dynamicVB);
 	bgfx::setIndexBuffer(dynamicIB);
 
-	bgfx::setTexture(0, renderer.s_texColor,  renderer.textureColor);
-	bgfx::setTexture(1, renderer.s_texNormal, renderer.textureNormal);
+	bgfx::setTexture(0, renderer.s_texColor,  renderer.colorMap);
+	bgfx::setTexture(1, renderer.s_texNormal, renderer.normalMap);
 
 	bgfx::setState(0
 		| BGFX_STATE_RGB_WRITE

@@ -82,7 +82,7 @@ uint32_t packF4u(float _x, float _y, float _z, float _w)
 	return packUint32(xx, yy, zz, ww);
 }
 
-ERet screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf, bool _originBottomLeft, float _width, float _height, float zz)
+ERet screenSpaceTriangle(float _textureWidth, float _textureHeight, float _texelHalf, bool _originBottomLeft, float _width, float _height, float zz)
 {
 	if (bgfx::checkAvailTransientVertexBuffer(3, PosTexCoord0Vertex::ms_decl) )
 	{
@@ -132,6 +132,86 @@ ERet screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf
 		vertex[2].m_v = maxv;
 
 		bgfx::setVertexBuffer(&vb);
+
+		return ALL_OK;
+	}
+	return ERR_OUT_OF_MEMORY;
+}
+
+ERet screenSpaceQuad(
+					 float _textureWidth, float _textureHeight,
+					 float _texelHalf, bool _originBottomLeft,
+					 float _width, float _height, float zz
+					 )
+{
+	bgfx::TransientVertexBuffer tvb;
+	bgfx::TransientIndexBuffer tib;
+	if (bgfx::allocTransientBuffers(&tvb, PosTexCoord0Vertex::ms_decl, 4, &tib, 6) )
+	{
+		const float minx = -_width;
+		const float maxx = +_width;
+		const float miny = -_height;
+		const float maxy = +_height;
+
+		const float texelHalfW = _texelHalf/_textureWidth;
+		const float texelHalfH = _texelHalf/_textureHeight;
+		const float minu = texelHalfW;
+		const float maxu = 1.0f + texelHalfH;
+
+		float minv = texelHalfH;
+		float maxv = 1.0f + texelHalfH;
+
+		if (_originBottomLeft)
+		{
+			UNDONE;
+			//float temp = minv;
+			//minv = maxv;
+			//maxv = temp;
+
+			//minv -= 1.0f;
+			//maxv -= 1.0f;
+		}
+
+		PosTexCoord0Vertex* vertices = (PosTexCoord0Vertex*)tvb.data;
+
+		// lower left
+		vertices[0].m_x = minx;
+		vertices[0].m_y = miny;
+		vertices[0].m_z = zz;
+		vertices[0].m_u = minu;
+		vertices[0].m_v = maxv;
+
+		// upper left
+		vertices[1].m_x = minx;
+		vertices[1].m_y = maxy;
+		vertices[1].m_z = zz;
+		vertices[1].m_u = minu;
+		vertices[1].m_v = minv;
+
+		// upper right
+		vertices[2].m_x = maxx;
+		vertices[2].m_y = maxy;
+		vertices[2].m_z = zz;
+		vertices[2].m_u = maxu;
+		vertices[2].m_v = minv;
+
+		// lower right
+		vertices[3].m_x = maxx;
+		vertices[3].m_y = miny;
+		vertices[3].m_z = zz;
+		vertices[3].m_u = maxu;
+		vertices[3].m_v = maxv;
+
+		uint16_t* indices = (uint16_t*)tib.data;
+		*indices++ = 0;
+		*indices++ = 1;
+		*indices++ = 2;
+		*indices++ = 0;
+		*indices++ = 2;
+		*indices++ = 3;
+
+		bgfx::setVertexBuffer(&tvb);
+		bgfx::setIndexBuffer(&tib);
 
 		return ALL_OK;
 	}
@@ -266,11 +346,11 @@ ERet Renderer::Initialize()
 		);
 
 	// Load diffuse texture.
-	textureColor  = loadTexture("tiles_WhiteAndGrey_01_diffuse.dds");
+	colorMap  = loadTexture("tiles_WhiteAndGrey_01_diffuse.dds");
 //	textureColor  = loadTexture("fieldstone-rgba.dds");
 
 	// Load normal texture.
-	textureNormal = loadTexture("tiles_WhiteAndGrey_01_normal.dds");
+	normalMap = loadTexture("tiles_WhiteAndGrey_01_normal.dds");
 //	textureNormal = loadTexture("fieldstone-n.dds");
 
 	memset(gbufferTex, bgfx::invalidHandle, sizeof(gbufferTex));
@@ -297,8 +377,8 @@ void Renderer::Shutdown()
 	bgfx::destroyProgram(lineProgram);
 	bgfx::destroyProgram(forwardProgram);
 
-	bgfx::destroyTexture(textureColor);
-	bgfx::destroyTexture(textureNormal);
+	bgfx::destroyTexture(colorMap);
+	bgfx::destroyTexture(normalMap);
 	bgfx::destroyUniform(s_texColor);
 	bgfx::destroyUniform(s_texNormal);
 
@@ -600,7 +680,7 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 					| BGFX_STATE_ALPHA_WRITE
 					| BGFX_STATE_BLEND_ADD
 					);
-				screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft);
+				screenSpaceTriangle( (float)width, (float)height, g_texelHalf, g_originBottomLeft);
 				bgfx::submit(RENDER_PASS_LIGHT_ID, lightProgram);
 			}
 		}
@@ -641,7 +721,7 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 		//	| BGFX_STENCIL_OP_FAIL_Z_KEEP
 		//	| BGFX_STENCIL_OP_PASS_Z_KEEP
 		//	);
-		screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft, 1.0f);
+		screenSpaceTriangle( (float)width, (float)height, g_texelHalf, g_originBottomLeft, 1.0f);
 		bgfx::submit(RENDER_PASS_GLOBAL_LIGHT, deferred_directional_light_program);
 	}
 
@@ -652,7 +732,7 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 		| BGFX_STATE_RGB_WRITE
 		| BGFX_STATE_ALPHA_WRITE
 		);
-	screenSpaceQuad( (float)width, (float)height, g_texelHalf, g_originBottomLeft);
+	screenSpaceTriangle( (float)width, (float)height, g_texelHalf, g_originBottomLeft);
 	bgfx::submit(RENDER_PASS_COMBINE_ID, combineProgram);
 
 	if (showGBuffer)
@@ -729,8 +809,8 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 				bgfx::setIndexBuffer(cubeIB);
 
 				// Bind textures.
-				bgfx::setTexture(0, s_texColor,  textureColor);
-				bgfx::setTexture(1, s_texNormal, textureNormal);
+				bgfx::setTexture(0, s_texColor,  colorMap);
+				bgfx::setTexture(1, s_texNormal, normalMap);
 
 				// Set render states.
 				bgfx::setState(0
@@ -835,8 +915,8 @@ ERet Renderer::DrawWireframe( const TArray< BSP::Vertex >& vertices, const TArra
 
 		bgfx::setVertexBuffer(&vb);
 
-		bgfx::setTexture(0, s_texColor,  textureColor);
-		bgfx::setTexture(1, s_texNormal, textureNormal);
+		bgfx::setTexture(0, s_texColor,  colorMap);
+		bgfx::setTexture(1, s_texNormal, normalMap);
 
 		bgfx::setState(0
 			| BGFX_STATE_RGB_WRITE

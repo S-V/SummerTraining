@@ -105,9 +105,13 @@ uint32_t packF4u(float _x, float _y = 0.0f, float _z = 0.0f, float _w = 0.0f);
 extern PosNormalTangentTexcoordVertex s_cubeVertices[24];
 extern const uint16_t s_cubeIndices[36];
 
-ERet screenSpaceQuad(float _textureWidth, float _textureHeight, float _texelHalf, bool _originBottomLeft, float _width = 1.0f, float _height = 1.0f, float zz = 0.0f);
+ERet screenSpaceTriangle(float _textureWidth, float _textureHeight, float _texelHalf, bool _originBottomLeft, float _width = 1.0f, float _height = 1.0f, float zz = 0.0f);
 
-
+ERet screenSpaceQuad(
+					 float _textureWidth, float _textureHeight,
+					 float _texelHalf, bool _originBottomLeft,
+					 float _width = 1.0f, float _height = 1.0f, float zz = 0.0f
+					 );
 
 struct DynamicMesh
 {
@@ -222,8 +226,8 @@ public:
 
 	bgfx::ProgramHandle deferred_directional_light_program;
 
-	bgfx::TextureHandle textureColor;
-	bgfx::TextureHandle textureNormal;
+	bgfx::TextureHandle colorMap;
+	bgfx::TextureHandle normalMap;
 
 	// G-buffer:
 	// RT0 - hardware depth

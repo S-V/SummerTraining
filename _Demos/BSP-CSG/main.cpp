@@ -21,7 +21,7 @@ ERet MyEntryPoint()
 {
 	SetupBaseUtil	setupBase;
 	FileLogUtil		fileLog;
-
+	SetupCoreUtil	setupCore;
 
 	DBGOUT("sizeof(Node)=%d, sizeof(Face)=%d", sizeof(BSP::Node), sizeof(BSP::Face));
 
@@ -32,6 +32,16 @@ ERet MyEntryPoint()
 	mxDO(renderer.Initialize());
 
 
+	bgfx::TextureHandle renderTarget = bgfx::createTexture2D( 512, 256, 1, bgfx::TextureFormat::RGBA8,BGFX_TEXTURE_RT );
+	bgfx::FrameBufferHandle frameBuffer = bgfx::createFrameBuffer( 1, &renderTarget, true );
+
+	bgfx::ProgramHandle screenspaceQuad = loadProgram(
+		"vs_screenspace_quad",
+		"fs_screenspace_quad"
+	);
+
+	bgfx::TextureHandle testTexture  = loadTexture("tree01S.dds");
+
 	//DynamicMesh	debugWireframe;
 	//debugWireframe.hVB = bgfx::createDynamicVertexBuffer( 1024, BSP::Vertex::ms_decl, BGFX_BUFFER_ALLOW_RESIZE );
 	//debugWireframe.hIB = bgfx::createDynamicIndexBuffer( 1024, BGFX_BUFFER_NONE );
@@ -41,7 +51,9 @@ ERet MyEntryPoint()
 	mxDO(csg.Initialize());
 
 
-	csg.RunTestCode();
+	//csg.RunTestCode();
+
+
 
 
 	int fireRate = 10; // shots per second
@@ -91,29 +103,46 @@ ERet MyEntryPoint()
 			, height
 			);
 
-		imguiBeginScrollArea("Settings", width - width / 5 - 10, 10, width / 5, height / 3, &scrollArea);
-		imguiSeparatorLine();
-
-		imguiSlider("Num lights", numLights, 1, 2048);
-
-		if (imguiCheck("Show G-Buffer.", showGBuffer) )
 		{
-			showGBuffer = !showGBuffer;
+			int y = 0;
+			{
+				imguiBeginScrollArea("Settings", width - width / 5 - 10, 10, width / 5, height / 3, &scrollArea);
+				imguiSeparatorLine();
+
+				imguiLabel("Nodes: %d", csg.worldTree.m_nodes.Num());
+
+				imguiSlider("Num lights", numLights, 1, 2048);
+
+				if (imguiCheck("Show G-Buffer.", showGBuffer) )
+				{
+					showGBuffer = !showGBuffer;
+				}
+
+				if (imguiCheck("Show light scissor.", showScissorRects) )
+				{
+					showScissorRects = !showScissorRects;
+				}
+
+				if (imguiCheck("Animate mesh.", animateMesh) )
+				{
+					animateMesh = !animateMesh;
+				}
+
+				imguiSlider("Lights animation speed", lightAnimationSpeed, 0.0f, 0.4f, 0.01f);
+
+				imguiEndScrollArea();
+	
+
+				//y = imguiGetWidgetY();
+			}
+
+			//imguiLabel("fsfsfs");
+			//{
+			//	imguiBeginArea("Stats", width - width / 5 - 10, y, width / 5, height / 3);
+			//	imguiValue("fsfsfaf");
+			//	imguiEndArea();
+			//}
 		}
-
-		if (imguiCheck("Show light scissor.", showScissorRects) )
-		{
-			showScissorRects = !showScissorRects;
-		}
-
-		if (imguiCheck("Animate mesh.", animateMesh) )
-		{
-			animateMesh = !animateMesh;
-		}
-
-		imguiSlider("Lights animation speed", lightAnimationSpeed, 0.0f, 0.4f, 0.01f);
-
-		imguiEndScrollArea();
 		imguiEndFrame();
 
 		// Update camera.
@@ -185,6 +214,33 @@ ERet MyEntryPoint()
 
 		//renderer.DrawWireframe(rawVertices,rawIndices);
 
+		{
+			ScopedStackAlloc	tempAlloc( gCore.frameAlloc );
+			const uint32_t dataSize = 512*256*sizeof(UINT32);
+			void* temp = tempAlloc.Alloc( dataSize );
+
+			int val = 0x000000FF;
+			memset(temp,val,dataSize);
+
+			updateTexture2D(
+				renderTarget,
+				0,	// uint8_t _mip
+				0,	// uint16_t _x
+				0,	// uint16_t _y
+				512,// uint16_t _width
+				256,// uint16_t _height
+				bgfx::copy(temp,dataSize)// const Memory* _mem
+			);
+		}
+
+		//bgfx::setTexture(0, renderer.s_texColor, renderTarget);
+		bgfx::setTexture(0, renderer.s_texColor, testTexture);
+
+		bgfx::setState(BGFX_STATE_RGB_WRITE);
+		screenSpaceQuad(512,256,g_texelHalf,g_originBottomLeft);
+		bgfx::submit(RENDER_PASS_DEBUG_GBUFFER_ID, screenspaceQuad);
+
+
 
 		renderer.EndFrame();
 
@@ -249,6 +305,8 @@ ERet MyEntryPoint()
 	//bgfx::destroyDynamicIndexBuffer( debugWireframe.hIB  );
 
 	csg.Shutdown();
+
+	bgfx::destroyFrameBuffer( frameBuffer );
 
 	renderer.Shutdown();
 
