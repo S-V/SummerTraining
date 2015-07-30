@@ -5,6 +5,8 @@
 */
 #pragma once
 
+#include <Graphics/Config.h>
+
 /*
 =====================================================================
 	OPAQUE HANDLES

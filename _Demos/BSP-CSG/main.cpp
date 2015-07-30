@@ -17,6 +17,13 @@ static void DbgRemoveFirstPoly( BSP::Tree& worldTree, BSP::NodeID nodeIndex )
 	node.faces = face.next;
 }
 
+enum {
+	// The width in pixels of the image
+	RT_SCREEN_SIZE_X = 512,
+	// The height in pixels of the image.
+	RT_SCREEN_SIZE_Y = 256
+};
+
 ERet MyEntryPoint()
 {
 	SetupBaseUtil	setupBase;
@@ -31,8 +38,14 @@ ERet MyEntryPoint()
 	Renderer	renderer;
 	mxDO(renderer.Initialize());
 
+	BatchRenderer	debugDraw;
+	mxDO(debugDraw.Initialize(&renderer));
 
-	bgfx::TextureHandle renderTarget = bgfx::createTexture2D( 512, 256, 1, bgfx::TextureFormat::RGBA8,BGFX_TEXTURE_RT );
+	bgfx::TextureHandle renderTarget = bgfx::createTexture2D(
+		RT_SCREEN_SIZE_X, RT_SCREEN_SIZE_Y, 1,
+		bgfx::TextureFormat::R32F,//bgfx::TextureFormat::RGBA8,
+		BGFX_TEXTURE_RT
+		);
 	bgfx::FrameBufferHandle frameBuffer = bgfx::createFrameBuffer( 1, &renderTarget, true );
 
 	bgfx::ProgramHandle screenspaceQuad = loadProgram(
@@ -151,6 +164,9 @@ ERet MyEntryPoint()
 		float view[16];
 		cameraGetViewMtx(view);
 
+		float invView[16];
+		bx::mtxInverse(invView, view);
+
 		renderer.BeginFrame( width, height, reset, view, time );
 
 		if(1)
@@ -214,33 +230,129 @@ ERet MyEntryPoint()
 
 		//renderer.DrawWireframe(rawVertices,rawIndices);
 
-		{
-			ScopedStackAlloc	tempAlloc( gCore.frameAlloc );
-			const uint32_t dataSize = 512*256*sizeof(UINT32);
-			void* temp = tempAlloc.Alloc( dataSize );
+			#if 0
+					{
+						ScopedStackAlloc	tempAlloc( gCore.frameAlloc );
+						const uint32_t dataSize = RT_SCREEN_SIZE_X*RT_SCREEN_SIZE_Y*sizeof(UINT32);
+						//uint32_t* imageData = (uint32_t*)tempAlloc.Alloc( dataSize );
+						float* imageData = (float*)tempAlloc.Alloc( dataSize );
 
-			int val = 0x000000FF;
-			memset(temp,val,dataSize);
+			#if 0
+						//int val = 0x000000FF;
+						int val = 0xFF000000;
+						memset(temp,val,dataSize);
 
-			updateTexture2D(
-				renderTarget,
-				0,	// uint8_t _mip
-				0,	// uint16_t _x
-				0,	// uint16_t _y
-				512,// uint16_t _width
-				256,// uint16_t _height
-				bgfx::copy(temp,dataSize)// const Memory* _mem
-			);
-		}
-
-		//bgfx::setTexture(0, renderer.s_texColor, renderTarget);
-		bgfx::setTexture(0, renderer.s_texColor, testTexture);
-
-		bgfx::setState(BGFX_STATE_RGB_WRITE);
-		screenSpaceQuad(512,256,g_texelHalf,g_originBottomLeft);
-		bgfx::submit(RENDER_PASS_DEBUG_GBUFFER_ID, screenspaceQuad);
+						for( uint32_t yy = 0; yy < RT_SCREEN_SIZE_Y; ++yy )
+						{
+							for (uint32_t xx = 0; xx < RT_SCREEN_SIZE_X; ++xx)
+							{
+								uint32_t& cc = imageData[ yy*RT_SCREEN_SIZE_X + xx ];
+								if(yy==xx)
+								cc = 0x0000FF00;	// RGBA (R - lowest bits, A - highest)
+								if( yy > 100 )
+									cc = 0x0000FFFF;
+							}
+						}
+			#endif
 
 
+						float horizFoV = DEG2RAD(90);
+
+						// image plane in world space
+						float XL = -RT_SCREEN_SIZE_X/2;	// left
+						float XR = +RT_SCREEN_SIZE_X/2;	// right
+						float ZB = -RT_SCREEN_SIZE_Y/2;	// bottom
+						float ZT = +RT_SCREEN_SIZE_Y/2;	// top			
+						//float dN = (RT_SCREEN_SIZE_Y/2) / tanFoVy;	// distance to the image plane
+						float dN = (RT_SCREEN_SIZE_X/2) / tanf(horizFoV*0.5f);	// distance to the image plane
+
+						// calculate deltas for interpolation
+						float DX = (XR - XL) / RT_SCREEN_SIZE_X;
+						float DZ = (ZB - ZT) / RT_SCREEN_SIZE_Y;
+
+						//Float4x4* mat1 = (Float4x4*) invView;
+						//Float4x4 mat = Matrix_Transpose( *mat1 );
+						//Camera* s_camera
+						Float4x4 mat = *(Float4x4*) invView;
+						Float3 eyePosition = Vector4_As_Float3( mat.r3 );
+						Float3 rightDirection = Vector4_As_Float3( mat.r0 );
+						Float3 upDirection = Vector4_As_Float3( mat.r1 );
+						Float3 lookDirection = Vector4_As_Float3( mat.r2 );
+
+						float camPos[3], camLookAt[3];
+						cameraGetPosition(camPos);
+						cameraGetAt(camLookAt);
+						Float3 lookAtTarget = eyePosition + lookDirection;
+
+						// for each pixel...
+						float RZ = ZT;
+						for( int iY = 0; iY < RT_SCREEN_SIZE_Y; iY++ )
+						{
+							float RX = XL;
+							for( int iX = 0; iX < RT_SCREEN_SIZE_X; iX++ )
+							{
+								int offset = iX+iY*RT_SCREEN_SIZE_X;
+
+								// ...compute the viewing ray:
+			#if 1
+								//Float3 rayTarget = {
+								//	RX,
+								//	dN,
+								//	RZ
+								//};
+								Float3 rayTarget = eyePosition
+									+ rightDirection * RX
+									+ upDirection * RZ
+									+ lookDirection * dN;
+
+								Float3 rayOrigin = eyePosition;
+								Float3 rayDirection = rayTarget - rayOrigin;
+								rayDirection = Float3_Normalized(rayDirection);
+
+								float thit = 0.0f;
+								int hit = csg.worldTree.CastRay(
+									rayOrigin, rayDirection,
+									0.0f, 1000.0f, &thit
+								);
+								//hit *= 1e-3f;
+								//imageData[offset] = thit;
+								imageData[offset] = hit ? 1.0f : 0.0f;
+			#endif
+
+								//csg.worldTree.CastRay();
+
+								imageData[offset] = 0.5f;
+
+								//imageData[offset] = 0x0000FF00;	// RGBA (R - lowest bits, A - highest)
+
+								RX += DX;
+							}
+							RZ += DZ;
+						}
+
+						updateTexture2D(
+							renderTarget,
+							0,	// uint8_t _mip
+							0,	// uint16_t _x
+							0,	// uint16_t _y
+							RT_SCREEN_SIZE_X,// uint16_t _width
+							RT_SCREEN_SIZE_Y,// uint16_t _height
+							bgfx::copy(imageData,dataSize)// const Memory* _mem
+						);
+					}
+
+					bgfx::setTexture(0, renderer.s_texColor, renderTarget);
+					//bgfx::setTexture(0, renderer.s_texColor, testTexture);
+
+					bgfx::setState(BGFX_STATE_RGB_WRITE);
+					screenSpaceQuad(RT_SCREEN_SIZE_X,RT_SCREEN_SIZE_Y,g_texelHalf,g_originBottomLeft, 2*3,1*3);
+					bgfx::submit(RENDER_PASS_DEBUG_GBUFFER_ID, screenspaceQuad);
+
+			#endif
+
+
+		debugDraw.DrawAxes(100);
+		debugDraw.Flush();
 
 		renderer.EndFrame();
 
@@ -307,6 +419,8 @@ ERet MyEntryPoint()
 	csg.Shutdown();
 
 	bgfx::destroyFrameBuffer( frameBuffer );
+
+	debugDraw.Shutdown();
 
 	renderer.Shutdown();
 

@@ -5,7 +5,7 @@
 #include <Base/Util/Color.h>
 #include <Graphics/Device.h>
 #include <Graphics/Effects.h>
-#if 0
+#if 1
 
 // Vertex type used for auxiliary rendering (editor/debug visualization/etc)
 #pragma pack (push,1)
@@ -16,11 +16,13 @@ struct AuxVertex
 	UByte4	N;		//4 NORMAL
 	UByte4	T;		//4 TANGENT
 	UByte4	rgba;	//4 COLOR
+	//32
 public:
 	static void BuildVertexDescription( VertexDescription & _description );
 };
 #pragma pack (pop)
 
+mxREFACTOR("ADebugDraw");
 struct AuxRenderer
 {
 	virtual void DrawLine3D(
@@ -65,40 +67,44 @@ public:
 	virtual ~AuxRenderer() {}
 };
 
-class PlatformRenderer
+struct PlatformRenderer
 {
+	UINT32	m_VBSize;
+	UINT32	m_IBSize;
 public:
-	virtual ERet Initialize() = 0;
-	virtual void Shutdown() = 0;
 	virtual void Draw(
 		const AuxVertex* _vertices,
 		const UINT32 _numVertices,
 		const UINT16* _indices,
 		const UINT32 _numIndices,
 		const Topology::Enum topology,
-		const FxShader& shader
+		const UINT64 shaderID
 	) = 0;
+protected:
+	PlatformRenderer()
+	{
+		m_VBSize = 0;
+		m_IBSize = 0;
+	}
 };
 class MyRenderer : public PlatformRenderer
 {
-	UINT32				m_VBSize;
-	UINT32				m_IBSize;
 	HBuffer				m_dynamicVB;
 	HBuffer				m_dynamicIB;
 	HInputLayout		m_layout;
 	UINT8				m_vertexStride;
 	UINT8				m_indexStride;
 public:
-	virtual ERet Initialize() override;
-	virtual void Shutdown() override;
-
+	ERet Initialize();
+	void Shutdown();
+	//-- PlatformRenderer
 	virtual void Draw(
 		const AuxVertex* _vertices,
 		const UINT32 _numVertices,
 		const UINT16* _indices,
 		const UINT32 _numIndices,
 		const Topology::Enum topology,
-		const FxShader& shader
+		const UINT64 shaderID
 	) override;
 };
 
@@ -249,8 +255,8 @@ private:
 	{
 		const UINT32 vertexDataSize = numVertices * sizeof(vertices[0]);
 		const UINT32 indexDataSize = numIndices * sizeof(indices[0]);
-		mxASSERT(vertexDataSize <= m_VBSize);
-		mxASSERT(indexDataSize <= m_IBSize);
+//		mxASSERT(vertexDataSize <= m_renderer->m_VBSize);
+//		mxASSERT(indexDataSize <= m_renderer->m_IBSize);
 
 		const UINT32 oldVBSize = m_batchedVertices.Num();
 		const UINT32 oldIBSize = m_batchedIndices.Num();
@@ -259,18 +265,18 @@ private:
 
 		bool bNeedToFlush = false;
 
-		bNeedToFlush |= (m_vertexStride != sizeof(vertices[0]));
-		bNeedToFlush |= (m_indexStride != sizeof(indices[0]));
-		bNeedToFlush |= (newVBSize > m_VBSize);
-		bNeedToFlush |= (newIBSize > m_IBSize);
+		//bNeedToFlush |= (m_vertexStride != sizeof(vertices[0]));
+		//bNeedToFlush |= (m_indexStride != sizeof(indices[0]));
+//		bNeedToFlush |= (newVBSize > m_renderer->m_VBSize);
+//		bNeedToFlush |= (newIBSize > m_renderer->m_IBSize);
 		bNeedToFlush |= (m_topology != topology);
 
 		if( bNeedToFlush ) {
 			this->Flush();
 		}
 
-		m_vertexStride = sizeof(vertices[0]);
-		m_indexStride = sizeof(indices[0]);
+		//m_vertexStride = sizeof(vertices[0]);
+		//m_indexStride = sizeof(indices[0]);
 		m_topology = topology;
 
 		const UINT32 baseVertexIndex = m_batchedVertices.Num() / sizeof(vertices[0]);
@@ -282,6 +288,9 @@ private:
 public_internal:
 	TArray< BYTE >		m_batchedVertices;
 	TArray< BYTE >		m_batchedIndices;
+
+	//UINT8	m_vertexStride;
+	//UINT8	m_indexStride;
 
 	TopologyT			m_topology;
 	TPtr< FxShader >	m_technique;

@@ -31,7 +31,6 @@
 */
 #pragma once
 
-#include <Graphics/Config.h>
 #include <Graphics/graphics_types.h>
 
 /*

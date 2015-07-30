@@ -4,14 +4,13 @@
 #include <Core/VectorMath.h>
 #include <Core/Util/Tweakable.h>
 #include <Graphics/Utils.h>
-#if 0
+#if 1
 
 void AuxVertex::BuildVertexDescription( VertexDescription & _description )
 {
 	_description.Begin();
 	_description.Add(AttributeType::Float, 3, VertexAttribute::Position, false);
 	_description.Add(AttributeType::Float, 2, VertexAttribute::TexCoord0, false);
-	//_description.Add(AttributeType::Float, 2, VertexAttribute::TexCoord1, false);
 	_description.Add(AttributeType::UByte, 4, VertexAttribute::Normal, false);
 	_description.Add(AttributeType::UByte, 4, VertexAttribute::Tangent, false);
 	_description.Add(AttributeType::UByte, 4, VertexAttribute::Color0, true);
@@ -104,10 +103,11 @@ ERet MyRenderer::Initialize()
 	AuxVertex::BuildVertexDescription( vertexDescription );
 	m_layout = llgl::CreateInputLayout( vertexDescription, "AuxVertex" );
 
-	m_dynamicVB = llgl::CreateBuffer( Buffer_Vertex, vertexBufferSize );
-	m_dynamicIB = llgl::CreateBuffer( Buffer_Index, indexBufferSize );
 	m_VBSize = vertexBufferSize;
 	m_IBSize = indexBufferSize;
+
+	m_dynamicVB = llgl::CreateBuffer( Buffer_Vertex, vertexBufferSize );
+	m_dynamicIB = llgl::CreateBuffer( Buffer_Index, indexBufferSize );
 	m_vertexStride = sizeof(AuxVertex);
 	m_indexStride = sizeof(UINT16);
 
@@ -145,7 +145,7 @@ void MyRenderer::Draw(
 					  const UINT16* _indices,
 					  const UINT32 _numIndices,
 					  const Topology::Enum topology,
-					  const FxShader& shader
+					  const UINT64 shaderID
 					  )
 {
 	const HContext mainContext = llgl::GetMainContext();
@@ -153,6 +153,7 @@ void MyRenderer::Draw(
 	llgl::DrawCall	batch;
 	batch.Clear();
 
+	const FxShader& shader = *reinterpret_cast< FxShader* >( shaderID );
 	FxApplyShaderState(batch, shader);
 
 	llgl::UpdateBuffer( mainContext, m_dynamicVB, _numVertices*sizeof(AuxVertex), _vertices );
@@ -985,7 +986,7 @@ void BatchRenderer::Flush()
 
 	if( numVertices )
 	{
-		m_renderer->Draw( (AuxVertex*)m_batchedVertices.ToPtr(), numVertices, (UINT16*)m_batchedIndices.ToPtr(), numIndices, m_topology, *m_technique );
+		m_renderer->Draw( (AuxVertex*)m_batchedVertices.ToPtr(), numVertices, (UINT16*)m_batchedIndices.ToPtr(), numIndices, m_topology, (UINT64)m_technique.Ptr );
 
 		//mxASSERT_PTR(m_technique);
 
@@ -1032,7 +1033,7 @@ void BatchRenderer::Draw(
 	//mxASSERT(indexDataSize <= m_IBSize);
 	Flush();
 
-	m_renderer->Draw( vertices, numVertices, indices, numIndices, topology, *m_technique );
+	m_renderer->Draw( vertices, numVertices, indices, numIndices, topology, (UINT64)m_technique.Ptr );
 }
 
 /*
