@@ -12,6 +12,23 @@ bgfx::VertexDecl PosNormalTangentTexcoordVertex::ms_decl;
 bgfx::VertexDecl PosTexCoord0Vertex::ms_decl;
 bgfx::VertexDecl DebugVertex::ms_decl;
 
+static bgfx::VertexDecl g_AuxVertexDecl;
+
+inline uint64_t ToBgfxTopology( const Topology::Enum topology )
+{
+	static const uint64_t g_bgfxState[] = {
+/* Topology::Undefined */		0,
+/* Topology::PointList */		BGFX_STATE_PT_POINTS,
+/* Topology::LineList */		BGFX_STATE_PT_LINES,
+/* Topology::LineStrip */		BGFX_STATE_PT_LINESTRIP,
+/* Topology::TriangleList */	0,
+/* Topology::TriangleStrip */	BGFX_STATE_PT_TRISTRIP,
+/* Topology::TriangleFan */		0,	// UNSUPPORTED
+	};
+	uint64_t state = g_bgfxState[ topology ];
+	return state;
+}
+
 PosNormalTangentTexcoordVertex s_cubeVertices[24] =
 {
 	{-1.0f,  1.0f,  1.0f, packF4u( 0.0f,  0.0f,  1.0f), 0,      0,      0 },
@@ -299,6 +316,14 @@ ERet Renderer::Initialize()
 	PosTexCoord0Vertex::init();
 	DebugVertex::init();
 
+	g_AuxVertexDecl.begin()
+		.add(bgfx::Attrib::Position,  3, bgfx::AttribType::Float)
+		.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+		.add(bgfx::Attrib::Normal,    4, bgfx::AttribType::Uint8, true, true)
+		.add(bgfx::Attrib::Tangent,   4, bgfx::AttribType::Uint8, true, true)
+		.add(bgfx::Attrib::Color0,   4, bgfx::AttribType::Uint8, true)
+		.end();
+
 	calcTangents(s_cubeVertices
 		, BX_COUNTOF(s_cubeVertices)
 		, PosNormalTangentTexcoordVertex::ms_decl
@@ -314,6 +339,9 @@ ERet Renderer::Initialize()
 
 	// Create static index buffer.
 	cubeIB = bgfx::createIndexBuffer(bgfx::makeRef(s_cubeIndices, sizeof(s_cubeIndices) ) );
+
+	//dynamicVB = bgfx::createDynamicVertexBuffer( PlatformRenderer::VB_SIZE/sizeof(AuxVertex), g_AuxVertexDecl, BGFX_BUFFER_ALLOW_RESIZE );
+	//dynamicIB = bgfx::createDynamicIndexBuffer( PlatformRenderer::IB_SIZE/sizeof(UINT16), BGFX_BUFFER_ALLOW_RESIZE );
 
 	// Create texture sampler uniforms.
 	s_texColor  = bgfx::createUniform("s_texColor",  bgfx::UniformType::Int1);
@@ -366,6 +394,9 @@ void Renderer::Shutdown()
 		bgfx::destroyFrameBuffer(gbuffer);
 		bgfx::destroyFrameBuffer(lightBuffer);
 	}
+
+	//bgfx::destroyDynamicVertexBuffer(dynamicVB);
+	//bgfx::destroyDynamicIndexBuffer(dynamicIB);
 
 	bgfx::destroyIndexBuffer(cubeIB);
 	bgfx::destroyVertexBuffer(cubeVB);
@@ -934,6 +965,66 @@ ERet Renderer::DrawWireframe( const TArray< BSP::Vertex >& vertices, const TArra
 	}
 
 	return ERR_OUT_OF_MEMORY;
+}
+
+void Renderer::Draw(
+	const AuxVertex* _vertices,
+	const UINT32 _numVertices,
+	const UINT16* _indices,
+	const UINT32 _numIndices,
+	const Topology::Enum topology,
+	const UINT64 shaderID
+)
+{
+#if 1
+	bgfx::TransientVertexBuffer tvb;
+	bgfx::TransientIndexBuffer tib;
+	if( bgfx::allocTransientBuffers( &tvb, g_AuxVertexDecl, _numVertices, &tib, _numIndices ) )
+	{
+		memcpy( tvb.data, _vertices, _numVertices * sizeof(_vertices[0]) );
+		memcpy( tib.data, _indices, _numIndices * sizeof(_indices[0]) );
+
+		bgfx::setVertexBuffer( &tvb, 0,_numVertices );
+		bgfx::setIndexBuffer( &tib, 0,_numIndices );
+//DBG_PrintArray(_indices,_numIndices, LogStream(LL_Debug));
+		bgfx::setState(0
+			| BGFX_STATE_RGB_WRITE
+			| BGFX_STATE_ALPHA_WRITE
+			| BGFX_STATE_DEPTH_TEST_LEQUAL
+			| ToBgfxTopology(topology)
+		);
+
+		bgfx::submit( RENDER_PASS_DEBUG_LINES_3D, lineProgram );
+	}
+#else
+
+	//{
+	//	LogStream log(LL_Debug);
+	//	log << "Topology: " << GetTypeOf_TopologyT().GetStringByValue(topology) << "\n";
+	//	DBG_PrintArray(_indices,_numIndices, log);
+	//	for( int i = 0; i < _numIndices; i++ ) {
+	//		log << "Vertex ["<<i<<"]: " << _vertices[i].xyz << "\n";
+	//	}
+	//}
+
+	const bgfx::Memory* vertexMemory = bgfx::copy( _vertices, sizeof(_vertices[0])*_numVertices );
+	const bgfx::Memory* indexMemory = bgfx::copy( _indices, sizeof(_indices[0])*_numIndices );
+	bgfx::updateDynamicVertexBuffer( dynamicVB, 0, vertexMemory );
+	bgfx::updateDynamicIndexBuffer( dynamicIB, 0, indexMemory );
+
+		bgfx::setVertexBuffer( dynamicVB );
+		bgfx::setIndexBuffer( dynamicIB );
+
+		bgfx::setState(0
+			| BGFX_STATE_RGB_WRITE
+			| BGFX_STATE_ALPHA_WRITE
+			| BGFX_STATE_DEPTH_TEST_LEQUAL
+			|BGFX_STATE_PT_LINES
+			//| ToBgfxTopology(topology)
+		);
+
+		bgfx::submit( RENDER_PASS_DEBUG_LINES_3D, lineProgram );
+#endif
 }
 
 #if 0

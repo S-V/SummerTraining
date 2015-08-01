@@ -1083,6 +1083,14 @@ int CastRay_R(
 	return 0;
 }
 
+bool Tree::CastRay(
+	const Float3& start, const Float3& direction,
+	float tmin, float tmax, float *thit
+) const
+{
+	return CastRay_R( start, direction, *this, 0, tmin, tmax, thit );
+}
+
 void Tree::CastRay(
 			 const Float3& start, const Float3& direction,
 			 RayCastResult &result

@@ -6,6 +6,8 @@
 #pragma once
 #include <Base/Base.h>
 #include <Core/Core.h>
+#include <Graphics/graphics_types.h>
+#include <Graphics/Utils.h>
 
 #include "common.h"
 #include "bgfx_utils.h"
@@ -190,7 +192,7 @@ struct MyCallback : public CallbackI
 };
 }//namespace bgfx
 
-class Renderer
+class Renderer : public PlatformRenderer
 {
 public:
 	uint32_t width;
@@ -200,6 +202,10 @@ public:
 
 	bgfx::VertexBufferHandle cubeVB;
 	bgfx::IndexBufferHandle cubeIB;
+
+	// Dynamic buffers for debug rendering.
+	//bgfx::DynamicVertexBufferHandle dynamicVB;
+	//bgfx::DynamicIndexBufferHandle dynamicIB;
 
 	bgfx::UniformHandle s_texColor;
 	bgfx::UniformHandle s_texNormal;
@@ -257,6 +263,16 @@ public:
 	ERet DrawWireframe( const TArray< BSP::Vertex >& vertices, const TArray< UINT16 >& indices );
 
 	void DrawWireframe( const DynamicMesh& mesh );
+
+	//-- PlatformRenderer
+	virtual void Draw(
+		const AuxVertex* _vertices,
+		const UINT32 _numVertices,
+		const UINT16* _indices,
+		const UINT32 _numIndices,
+		const Topology::Enum topology,
+		const UINT64 shaderID
+	) override;
 };
 
 extern bool animateMesh;

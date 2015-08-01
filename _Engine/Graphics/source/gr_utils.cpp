@@ -4,14 +4,13 @@
 #include <Core/VectorMath.h>
 #include <Core/Util/Tweakable.h>
 #include <Graphics/Utils.h>
-#if 0
+#if 1
 
 void AuxVertex::BuildVertexDescription( VertexDescription & _description )
 {
 	_description.Begin();
 	_description.Add(AttributeType::Float, 3, VertexAttribute::Position, false);
 	_description.Add(AttributeType::Float, 2, VertexAttribute::TexCoord0, false);
-	//_description.Add(AttributeType::Float, 2, VertexAttribute::TexCoord1, false);
 	_description.Add(AttributeType::UByte, 4, VertexAttribute::Normal, false);
 	_description.Add(AttributeType::UByte, 4, VertexAttribute::Tangent, false);
 	_description.Add(AttributeType::UByte, 4, VertexAttribute::Color0, true);
@@ -104,10 +103,11 @@ ERet MyRenderer::Initialize()
 	AuxVertex::BuildVertexDescription( vertexDescription );
 	m_layout = llgl::CreateInputLayout( vertexDescription, "AuxVertex" );
 
-	m_dynamicVB = llgl::CreateBuffer( Buffer_Vertex, vertexBufferSize );
-	m_dynamicIB = llgl::CreateBuffer( Buffer_Index, indexBufferSize );
 	m_VBSize = vertexBufferSize;
 	m_IBSize = indexBufferSize;
+
+	m_dynamicVB = llgl::CreateBuffer( Buffer_Vertex, vertexBufferSize );
+	m_dynamicIB = llgl::CreateBuffer( Buffer_Index, indexBufferSize );
 	m_vertexStride = sizeof(AuxVertex);
 	m_indexStride = sizeof(UINT16);
 
@@ -145,7 +145,7 @@ void MyRenderer::Draw(
 					  const UINT16* _indices,
 					  const UINT32 _numIndices,
 					  const Topology::Enum topology,
-					  const FxShader& shader
+					  const UINT64 shaderID
 					  )
 {
 	const HContext mainContext = llgl::GetMainContext();
@@ -153,6 +153,7 @@ void MyRenderer::Draw(
 	llgl::DrawCall	batch;
 	batch.Clear();
 
+	const FxShader& shader = *reinterpret_cast< FxShader* >( shaderID );
 	FxApplyShaderState(batch, shader);
 
 	llgl::UpdateBuffer( mainContext, m_dynamicVB, _numVertices*sizeof(AuxVertex), _vertices );
@@ -309,45 +310,44 @@ void BatchRenderer::DrawDashedLine(
 void BatchRenderer::DrawAxes( float l )
 {
 #if 0
-	DrawLine3D(
+	// Draw axes.
+	DrawLine(
 		0.0f,0.0f,0.0f,
 		l*1.0f,0.0f,0.0f,
 		RGBAf::WHITE,
 		RGBAf::RED
 	);
-	DrawLine3D(
+	DrawLine(
 		0.0f,0.0f,0.0f,
 		0.0f,l*1.0f,0.0f,
 		RGBAf::WHITE,
 		RGBAf::GREEN
 	);
-	DrawLine3D(
+	DrawLine(
 		0.0f,0.0f,0.0f,
 		0.0f,0.0f,l*1.0f,
 		RGBAf::WHITE,
 		RGBAf::BLUE
 	);
 #elif 0
-	// Draw axes.
-
 	// Draw the x-axis in red
-	DrawLine3D(
-		0.0f,0.0f,0.0f,
-		l*1.0f,0.0f,0.0f,
+	DrawLine(
+		Float3_Set(0.0f,0.0f,0.0f),
+		Float3_Set(l*1.0f,0.0f,0.0f),
 		RGBAf::RED,
 		RGBAf::RED
 	);
 	// Draw the y-axis in green
-	DrawLine3D(
-		0.0f,0.0f,0.0f,
-		0.0f,l*1.0f,0.0f,
+	DrawLine(
+		Float3_Set(0.0f,0.0f,0.0f),
+		Float3_Set(0.0f,l*1.0f,0.0f),
 		RGBAf::GREEN,
 		RGBAf::GREEN
 	);
 	// Draw the z-axis in blue
-	DrawLine3D(
-		0.0f,0.0f,0.0f,
-		0.0f,0.0f,l*1.0f,
+	DrawLine(
+		Float3_Set(0.0f,0.0f,0.0f),
+		Float3_Set(0.0f,0.0f,l*1.0f),
 		RGBAf::BLUE,
 		RGBAf::BLUE
 	);
@@ -395,10 +395,10 @@ void BatchRenderer::DrawArrow(
 	const RGBAf& endColor = color;
 
 	DrawLine( origin, endPoint, startColor, endColor );
-	DrawLine( endPoint, Matrix_TransformPoint(arrowTransform, Float3_Set( arrowLength-headSize, +headSize*headScale, +headSize*headScale )), startColor, endColor );
-	DrawLine( endPoint, Matrix_TransformPoint(arrowTransform, Float3_Set( arrowLength-headSize, +headSize*headScale, -headSize*headScale )), startColor, endColor );
-	DrawLine( endPoint, Matrix_TransformPoint(arrowTransform, Float3_Set( arrowLength-headSize, -headSize*headScale, +headSize*headScale )), startColor, endColor );
-	DrawLine( endPoint, Matrix_TransformPoint(arrowTransform, Float3_Set( arrowLength-headSize, -headSize*headScale, -headSize*headScale )), startColor, endColor );
+	DrawLine( endPoint, Matrix_TransformPoint(arrowTransform, Float3_Set( arrowLength-headSize, +headSize*headScale, +headSize*headScale )), endColor, endColor );
+	DrawLine( endPoint, Matrix_TransformPoint(arrowTransform, Float3_Set( arrowLength-headSize, +headSize*headScale, -headSize*headScale )), endColor, endColor );
+	DrawLine( endPoint, Matrix_TransformPoint(arrowTransform, Float3_Set( arrowLength-headSize, -headSize*headScale, +headSize*headScale )), endColor, endColor );
+	DrawLine( endPoint, Matrix_TransformPoint(arrowTransform, Float3_Set( arrowLength-headSize, -headSize*headScale, -headSize*headScale )), endColor, endColor );
 }
 
 // based on DXSDK, June 2010, XNA collision detection sample
@@ -985,34 +985,7 @@ void BatchRenderer::Flush()
 
 	if( numVertices )
 	{
-		m_renderer->Draw( (AuxVertex*)m_batchedVertices.ToPtr(), numVertices, (UINT16*)m_batchedIndices.ToPtr(), numIndices, m_topology, *m_technique );
-
-		//mxASSERT_PTR(m_technique);
-
-		//llgl::DrawCall	batch;
-		//batch.Clear();
-
-		//FxApplyShaderState(batch, *m_technique);
-
-		//llgl::UpdateBuffer( mainContext, m_dynamicVB, m_batchedVertices.Num(), m_batchedVertices.ToPtr() );
-
-		//if( numIndices > 0 ) {
-		//	llgl::UpdateBuffer( mainContext, m_dynamicIB, m_batchedIndices.Num(), m_batchedIndices.ToPtr() );
-		//}
-
-		//batch.inputLayout = m_layout;
-		//batch.topology = m_topology;
-
-		//batch.VB[0] = m_dynamicVB;
-		//batch.IB = m_dynamicIB;
-		//batch.b32bit = (m_indexStride==sizeof(UINT32));
-
-		//batch.baseVertex = 0;
-		//batch.vertexCount = numVertices;
-		//batch.startIndex = 0;
-		//batch.indexCount = numIndices;
-
-		//llgl::Submit(mainContext, batch);
+		m_renderer->Draw( (AuxVertex*)m_batchedVertices.ToPtr(), numVertices, (UINT16*)m_batchedIndices.ToPtr(), numIndices, m_topology, (UINT64)m_technique.Ptr );
 	}
 
 	m_batchedVertices.Empty();
@@ -1032,7 +1005,7 @@ void BatchRenderer::Draw(
 	//mxASSERT(indexDataSize <= m_IBSize);
 	Flush();
 
-	m_renderer->Draw( vertices, numVertices, indices, numIndices, topology, *m_technique );
+	m_renderer->Draw( vertices, numVertices, indices, numIndices, topology, (UINT64)m_technique.Ptr );
 }
 
 /*

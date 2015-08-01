@@ -263,6 +263,16 @@ public_internal:
 	PREVENT_COPY(TextStream);
 };
 
+
+template< typename TYPE >
+void DBG_PrintArray( const TYPE* _items, int _count, ATextStream &_log )
+{
+	for( int i = 0; i < _count; i++ )
+	{
+		_log << "[" << i << "]: " << _items[i] << '\n';
+	}
+}
+
 //--------------------------------------------------------------//
 //				End Of File.									//
 //--------------------------------------------------------------//

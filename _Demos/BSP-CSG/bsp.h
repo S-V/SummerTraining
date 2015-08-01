@@ -251,6 +251,10 @@ public:
 		RayCastResult &result
 	) const;
 
+	bool CastRay(
+		const Float3& start, const Float3& direction,
+		float tmin, float tmax, float *thit
+	) const;
 
 	float CastRay( const Float3& start, const Float3& direction ) const;
 
