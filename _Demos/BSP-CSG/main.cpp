@@ -65,7 +65,7 @@ ERet MyEntryPoint()
 
 
 	//csg.RunTestCode();
-
+csg.UpdateRenderMesh(csg.worldTree);
 
 
 
@@ -284,6 +284,19 @@ ERet MyEntryPoint()
 						cameraGetAt(camLookAt);
 						Float3 lookAtTarget = eyePosition + lookDirection;
 
+						{
+							float thit;
+							int hit = csg.worldTree.CastRay(
+									eyePosition, lookDirection,
+									0.0f, 1000.0f, &thit
+								);
+							if(hit) {
+								DBGOUT("HIT!!!: %f",thit);
+							} else {
+								DBGOUT("NO HIT.");
+							}
+						}
+
 						// for each pixel...
 						float RZ = ZT;
 						for( int iY = 0; iY < RT_SCREEN_SIZE_Y; iY++ )
@@ -351,17 +364,7 @@ ERet MyEntryPoint()
 			#endif
 
 
-	debugDraw.DrawAxes(100);
-
-		//debugDraw.DrawArrow(
-		//	Matrix_FromAxes(
-		//	Float4_As_Float3(g_Float4_UnitX),
-		//	Float4_As_Float3(g_Float4_UnitY),
-		//	Float4_As_Float3(g_Float4_UnitZ)
-		//	),
-		//	RGBAf::RED, 100.0f, 10.f
-		//);
-
+		debugDraw.DrawAxes(100);
 
 		debugDraw.Flush();
 

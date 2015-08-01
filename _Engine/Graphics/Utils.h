@@ -71,11 +71,9 @@ struct PlatformRenderer
 {
 	// dynamic mesh buffers for immediate rendering
 	enum {
-		VB_SIZE = 8*1024*sizeof(AuxVertex),
-		IB_SIZE = 16*1024*sizeof(UINT16)
+		VB_SIZE = 8*1024,
+		IB_SIZE = 16*1024
 	};
-	UINT32	m_VBSize;
-	UINT32	m_IBSize;
 public:
 	virtual void Draw(
 		const AuxVertex* _vertices,
@@ -88,8 +86,6 @@ public:
 protected:
 	PlatformRenderer()
 	{
-		m_VBSize = 0;
-		m_IBSize = 0;
 	}
 };
 class MyRenderer : public PlatformRenderer
@@ -258,20 +254,16 @@ private:
 	template< typename VERTEX_TYPE, typename INDEX_TYPE >
 	UINT32 BeginBatch( TopologyT topology, UINT32 numVertices, VERTEX_TYPE *& vertices, UINT32 numIndices, INDEX_TYPE *& indices )
 	{
-		const UINT32 vertexDataSize = numVertices * sizeof(vertices[0]);
-		const UINT32 indexDataSize = numIndices * sizeof(indices[0]);
-		mxASSERT(vertexDataSize <= PlatformRenderer::VB_SIZE);
-		mxASSERT(indexDataSize <= PlatformRenderer::IB_SIZE);
+		mxASSERT(numVertices <= PlatformRenderer::VB_SIZE);
+		mxASSERT(numIndices <= PlatformRenderer::IB_SIZE);
 
 		const UINT32 oldVBSize = m_batchedVertices.Num();
 		const UINT32 oldIBSize = m_batchedIndices.Num();
-		const UINT32 newVBSize = oldVBSize + vertexDataSize;
-		const UINT32 newIBSize = oldIBSize + indexDataSize;
+		const UINT32 newVBSize = oldVBSize + numVertices;
+		const UINT32 newIBSize = oldIBSize + numIndices;
 
 		bool bNeedToFlush = false;
 
-		//bNeedToFlush |= (m_vertexStride != sizeof(vertices[0]));
-		//bNeedToFlush |= (m_indexStride != sizeof(indices[0]));
 		bNeedToFlush |= (newVBSize > PlatformRenderer::VB_SIZE);
 		bNeedToFlush |= (newIBSize > PlatformRenderer::IB_SIZE);
 		bNeedToFlush |= (m_topology != topology);
@@ -280,22 +272,17 @@ private:
 			this->Flush();
 		}
 
-		//m_vertexStride = sizeof(vertices[0]);
-		//m_indexStride = sizeof(indices[0]);
 		m_topology = topology;
 
-		const UINT32 baseVertexIndex = m_batchedVertices.Num() / sizeof(vertices[0]);
-		vertices = (VERTEX_TYPE*) m_batchedVertices.AddManyUninitialized(vertexDataSize);
-		indices = (INDEX_TYPE*) m_batchedIndices.AddManyUninitialized(indexDataSize);
+		const UINT32 baseVertexIndex = m_batchedVertices.Num();
+		vertices = (VERTEX_TYPE*) m_batchedVertices.AddManyUninitialized(numVertices);
+		indices = (INDEX_TYPE*) m_batchedIndices.AddManyUninitialized(numIndices);
 		return baseVertexIndex;
 	}
 
 public_internal:
-	TArray< BYTE >		m_batchedVertices;
-	TArray< BYTE >		m_batchedIndices;
-
-	//UINT8	m_vertexStride;
-	//UINT8	m_indexStride;
+	TArray< AuxVertex >	m_batchedVertices;
+	TArray< UINT16 >	m_batchedIndices;
 
 	TopologyT			m_topology;
 	TPtr< FxShader >	m_technique;

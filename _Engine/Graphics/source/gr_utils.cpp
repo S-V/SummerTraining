@@ -96,16 +96,12 @@ void AuxRenderer::DrawAABB(
 
 ERet MyRenderer::Initialize()
 {
-	UINT32 vertexBufferSize = 4096 * sizeof(AuxVertex);
-	UINT32 indexBufferSize = 8192 * sizeof(UINT16);
-
 	VertexDescription	vertexDescription;
 	AuxVertex::BuildVertexDescription( vertexDescription );
 	m_layout = llgl::CreateInputLayout( vertexDescription, "AuxVertex" );
 
-	m_VBSize = vertexBufferSize;
-	m_IBSize = indexBufferSize;
-
+	UINT32 vertexBufferSize = VB_SIZE * sizeof(AuxVertex);
+	UINT32 indexBufferSize = IB_SIZE * sizeof(UINT16);
 	m_dynamicVB = llgl::CreateBuffer( Buffer_Vertex, vertexBufferSize );
 	m_dynamicIB = llgl::CreateBuffer( Buffer_Index, indexBufferSize );
 	m_vertexStride = sizeof(AuxVertex);
@@ -130,8 +126,6 @@ void MyRenderer::Shutdown()
 	llgl::DeleteInputLayout(m_layout);
 	m_layout.SetNil();
 
-	m_VBSize = 0;
-	m_IBSize = 0;
 	m_indexStride = 0;
 
 	m_dynamicVB.SetNil();
@@ -978,14 +972,17 @@ void BatchRenderer::DrawPoint( const AuxVertex& _p )
 
 void BatchRenderer::Flush()
 {
-	const UINT32 vertexDataSize = m_batchedVertices.Num();
-	const UINT32 indexDataSize = m_batchedIndices.Num();
-	const UINT32 numVertices = vertexDataSize / sizeof(AuxVertex);
-	const UINT32 numIndices = indexDataSize / sizeof(UINT16);
+	const UINT32 numVertices = m_batchedVertices.Num();
+	const UINT32 numIndices = m_batchedIndices.Num();
 
 	if( numVertices )
 	{
-		m_renderer->Draw( (AuxVertex*)m_batchedVertices.ToPtr(), numVertices, (UINT16*)m_batchedIndices.ToPtr(), numIndices, m_topology, (UINT64)m_technique.Ptr );
+		m_renderer->Draw(
+			m_batchedVertices.ToPtr(), m_batchedVertices.Num(),
+			m_batchedIndices.ToPtr(), m_batchedIndices.Num(),
+			m_topology,
+			(UINT64)m_technique.Ptr
+		);
 	}
 
 	m_batchedVertices.Empty();

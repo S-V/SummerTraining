@@ -20,11 +20,15 @@
 #define RENDER_PASS_GEOMETRY_ID       0
 #define RENDER_PASS_LIGHT_ID          1
 #define RENDER_PASS_GLOBAL_LIGHT      2
-#define RENDER_PASS_COMBINE_ID        3
+
 #define RENDER_PASS_DEBUG_LIGHTS_ID   4
 #define RENDER_PASS_DEBUG_GBUFFER_ID  5
 #define RENDER_PASS_FORWARD           7
-#define RENDER_PASS_DEBUG_LINES_3D    12
+
+
+#define RENDER_PASS_COMBINE_ID        13
+
+#define RENDER_PASS_DEBUG_LINES_3D    14
 
 extern float g_texelHalf;
 extern bool g_originBottomLeft;
