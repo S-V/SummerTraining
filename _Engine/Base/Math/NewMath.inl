@@ -202,9 +202,9 @@ inline const Float3 Plane_CalculateNormal( const Float4& plane )
 	const Float3 N = *reinterpret_cast< const Float3* >( &plane );
 	return Float3_Normalized( N );
 }
-inline const Float3 Plane_GetNormal( const Float4& plane )
+inline const Float3& Plane_GetNormal( const Float4& plane )
 {
-	const Float3 N = *reinterpret_cast< const Float3* >( &plane );
+	const Float3& N = *reinterpret_cast< const Float3* >( &plane );
 	mxASSERT(Float3_IsNormalized( N ));
 	return N;
 }

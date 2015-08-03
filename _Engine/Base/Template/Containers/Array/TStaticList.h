@@ -55,10 +55,11 @@ public:
 		return mNum;
 	}
 
-	inline void SetNum( UINT32 newNum )
+	inline ERet SetNum( UINT32 newNum )
 	{
 		mxASSERT(newNum <= Max());
 		mNum = newNum;
+		return ALL_OK;
 	}
 
 	// Returns the maximum number of elements in the list.
@@ -110,15 +111,6 @@ public:
 	{
 		mxASSERT( mNum < SIZE );
 		return mData[ mNum++ ];
-	}
-
-	void AddBytes( const void* src, size_t numBytes )
-	{
-		size_t oldNum = mNum;
-		size_t newNum = oldNum + numBytes;
-		SetNum( newNum );
-
-		memcpy( mData + oldNum, src, numBytes );
 	}
 
 	// Slow!

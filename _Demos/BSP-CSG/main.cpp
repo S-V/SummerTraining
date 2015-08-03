@@ -17,6 +17,171 @@ static void DbgRemoveFirstPoly( BSP::Tree& worldTree, BSP::NodeID nodeIndex )
 	node.faces = face.next;
 }
 
+template< typename TYPE, class ARRAY >
+ERet TSetMany( ARRAY &_array, const TYPE* _items, UINT32 _count )
+{
+	mxDO(_array.SetNum(_count));
+	TCopyArray( _array.ToPtr(), _items, _count );
+	return ALL_OK;
+}
+template< class ARRAY >
+ERet TAppend( ARRAY &_destination, const ARRAY& _source )
+{
+	const UINT32 oldNum = _destination.Num();
+	const UINT32 newNum = oldNum + _source.Num();
+	mxDO(_destination.SetNum(newNum));
+	TCopyArray( _destination.ToPtr() + oldNum, _source.ToPtr(), _source.Num() );
+	return ALL_OK;
+}
+
+const Float3 Plane_Project( const Float4& plane, const Float3& point )
+{
+	const Float3& N = Plane_GetNormal( plane );
+	mxASSERT(Float3_IsNormalized( N ));
+	return point - N * Plane_PointDistance( plane, point );
+}
+
+static void CreatePolygon( const Vector4& plane, const Float3& _eyePosition, BSP::Vertex vertices[4] )
+{
+	const Float3 normal = Plane_GetNormal(plane);
+	const Float3 axis2 = Float3_Normalized(Float3_FindOrthogonalTo(normal));
+	const Float3 axis1 = Float3_Negate(Float3_Normalized(Float3_Cross(axis2, normal)));
+	const float size = 100.0f;
+
+	const Float3 center = Plane_Project(plane, _eyePosition);
+
+	const Float3 right = axis1 * size;
+	const Float3 up = axis2 * size;
+	const Float3 left = right * -1.0f;
+	const Float3 down = up * -1.0f;
+
+	BSP::Vertex &lowerLeft = vertices[0];
+	BSP::Vertex &upperLeft = vertices[1];
+	BSP::Vertex &upperRight = vertices[2];
+	BSP::Vertex &lowerRight = vertices[3];
+
+	lowerLeft.xyz = left + down;
+	upperLeft.xyz = left + up;
+	upperRight.xyz = right + up;
+	lowerRight.xyz = right + down;
+
+	lowerLeft.N = PackNormal(normal).v;
+	upperLeft.N = PackNormal(normal).v;
+	upperRight.N = PackNormal(normal).v;
+	lowerRight.N = PackNormal(normal).v;
+
+	lowerLeft.T = PackNormal(axis1).v;
+	upperLeft.T = PackNormal(axis1).v;
+	upperRight.T = PackNormal(axis1).v;
+	lowerRight.T = PackNormal(axis1).v;
+
+	lowerLeft.UV	= Float2_Set( 0.0f, 1.0f );
+	upperLeft.UV	= Float2_Set( 0.0f, 0.0f );
+	upperRight.UV	= Float2_Set( 1.0f, 0.0f );
+	lowerRight.UV	= Float2_Set( 1.0f, 1.0f );
+}
+
+static void GeneratePolygonsR(
+							 const BSP::Tree& _tree,
+							 const BSP::NodeID _node,
+							 const Float3& _eyePosition,
+							 const TArray< BSP::Face >& _inFaces,
+							 TArray< BSP::Face >& _outFaces
+							 )
+{
+	using namespace BSP;
+	if( IS_INTERNAL(_node) )
+	{
+		const Node& node = _tree.m_nodes[ _node ];
+		const Vector4& plane = _tree.m_planes[ node.plane ];
+
+		Vertex	buffer1[64];
+		Vertex	buffer2[64];
+
+		TArray< Vertex > frontPoly;
+		TArray< Vertex > backPoly;
+		frontPoly.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
+		backPoly.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+
+		TArray< BSP::Face > frontFaces, backFaces;
+
+
+		BSP::Face coplanar;
+		{
+			BSP::Vertex vertices[4];
+			CreatePolygon(plane, _eyePosition, vertices);
+
+			coplanar.vertices.Add(vertices[0]);
+			coplanar.vertices.Add(vertices[1]);
+			coplanar.vertices.Add(vertices[2]);
+			coplanar.vertices.Add(vertices[3]);
+		}
+
+		frontFaces.Add(coplanar);
+		backFaces.Add(coplanar);
+
+		for( int i = 0; i < _inFaces.Num(); i++ )
+		{
+			const BSP::Face& face = _inFaces[i];
+
+			const BSP::EPlaneSide side = SplitConvexPolygonByPlane(
+				face.vertices.ToPtr(),
+				face.vertices.Num(),
+				frontPoly,	// valid only if the polygon was split
+				backPoly,	// valid only if the polygon was split
+				plane,
+				0.13f
+			);
+			if( side == BSP::PLANESIDE_CROSS )
+			{
+				Face& newFrontPoly = frontFaces.Add();
+				TSetMany(newFrontPoly.vertices, frontPoly.ToPtr(), frontPoly.Num());
+				Face& newBackPoly = backFaces.Add();
+				TSetMany(newBackPoly.vertices, backPoly.ToPtr(), backPoly.Num());
+			}
+			else if( side == BSP::PLANESIDE_FRONT )
+			{
+				Face& newFrontPoly = frontFaces.Add();
+				TSetMany(newFrontPoly.vertices, frontPoly.ToPtr(), frontPoly.Num());
+			}
+			else if( side == BSP::PLANESIDE_BACK )
+			{
+				Face& newBackPoly = backFaces.Add();
+				TSetMany(newBackPoly.vertices, backPoly.ToPtr(), backPoly.Num());
+			}
+		}
+
+		GeneratePolygonsR(_tree, node.front, _eyePosition, frontFaces, _outFaces);
+		GeneratePolygonsR(_tree, node.back, _eyePosition, backFaces, _outFaces);
+	}
+	else if( IS_SOLID_LEAF(_node) )
+	{
+		TAppend(_outFaces, _inFaces );
+	}
+}
+
+static void GeneratePolygons(
+							 const BSP::Tree& _tree,
+							 const BSP::NodeID _start,
+							 const Float3& _cameraPosition,
+							 TArray< BSP::Vertex > &_vertices,
+							 TArray< UINT16 > &_indices
+							 )
+{
+	_vertices.Empty();
+	_indices.Empty();
+
+	TArray< BSP::Face > inFaces, outFaces;
+	GeneratePolygonsR(_tree,_start,_cameraPosition, inFaces,outFaces);
+
+	for( int i = 0; i < outFaces.Num(); i++ )
+	{
+		const BSP::Face& face = outFaces[i];
+		if(face.vertices.Num())
+		TriangulateFace( face, _vertices, _indices );
+	}
+}
+
 enum {
 	// The width in pixels of the image
 	RT_SCREEN_SIZE_X = 512,
@@ -65,9 +230,10 @@ ERet MyEntryPoint()
 
 
 	//csg.RunTestCode();
-csg.UpdateRenderMesh(csg.worldTree);
-
-
+//csg.UpdateRenderMesh(csg.worldTree);
+	BSP::Debug::PrintTree(csg.worldTree);
+GeneratePolygons(csg.worldTree, 0, Float3_Zero(), csg.vertices, csg.indices);
+csg.UpdateRenderMesh(csg.vertices, csg.indices);
 
 	int fireRate = 10; // shots per second
 	int64_t lastTimeShot = 0;
@@ -387,6 +553,9 @@ csg.UpdateRenderMesh(csg.worldTree);
 				rayDir = Float3_Normalized(lookAt - rayPos);
 
 				csg.Shoot( rayPos, rayDir, lastHit );
+
+				GeneratePolygons(csg.worldTree, 0, Float3_Zero(), csg.vertices, csg.indices);
+csg.UpdateRenderMesh(csg.vertices, csg.indices);
 
 //				worldTree.CastRay( rayPos, rayDir, lastHit );
 //				if( lastHit.hitAnything )

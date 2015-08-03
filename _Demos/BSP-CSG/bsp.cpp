@@ -353,7 +353,7 @@ EPlaneSide SplitConvexPolygonByPlane(
 #endif
 
 mxSWIPED("Doom 3 BFG Edition GPL Source Code, idSoftware");
-static EPlaneSide SplitConvexPolygonByPlane(
+EPlaneSide SplitConvexPolygonByPlane(
 	const Vertex* vertices,
 	const int vertexCount,
 	TArray<Vertex> &front,	// valid only if the polygon was split
@@ -2005,6 +2005,43 @@ void Tree::Translate( const Float3& T )
 	}
 }
 
+void TriangulateFace(
+					  const Face& face,
+					  TArray< Vertex > &vertices,
+					  TArray< UINT16 > &indices
+					  )
+{
+	const int numTriangles = face.vertices.Num() - 2;
+
+	const Vertex& basePoint = face.vertices[ 0 ];
+#if 0
+	const UINT16 iBasePoint = vertices.Num();
+	vertices.Add( basePoint );
+
+	for ( int i = 1; i < numTriangles + 1; i++ )
+	{
+		vertices.Add( face.vertices[ i ] );
+		vertices.Add( face.vertices[ i+1 ] );
+
+		indices.Add( iBasePoint );
+		indices.Add( iBasePoint + i );
+		indices.Add( iBasePoint + i + 1 );
+	}
+#else
+	for ( int i = 1; i < numTriangles + 1; i++ )
+	{
+		const UINT16 iBasePoint = vertices.Num();
+		vertices.Add( basePoint );
+		vertices.Add( face.vertices[ i ] );
+		vertices.Add( face.vertices[ i+1 ] );
+
+		indices.Add( iBasePoint );
+		indices.Add( iBasePoint + 1 );
+		indices.Add( iBasePoint + 2 );
+	}
+#endif
+}
+
 void TriangulateFaces(
 					  const Tree& tree,
 					  const FaceID faces,
@@ -2018,37 +2055,9 @@ void TriangulateFaces(
 		const Face& face = tree.m_faces[ iFaceId ];
 		mxASSERT( face.vertices.Num() >= 3 );
 
-		const int numTriangles = face.vertices.Num() - 2;
-
 		// Triangulate the current convex polygon...
+		TriangulateFace( face, vertices, indices );
 
-		const Vertex& basePoint = face.vertices[ 0 ];
-#if 0
-		const UINT16 iBasePoint = vertices.Num();
-		vertices.Add( basePoint );
-
-		for ( int i = 1; i < numTriangles + 1; i++ )
-		{
-			vertices.Add( face.vertices[ i ] );
-			vertices.Add( face.vertices[ i+1 ] );
-
-			indices.Add( iBasePoint );
-			indices.Add( iBasePoint + i );
-			indices.Add( iBasePoint + i + 1 );
-		}
-#else
-		for ( int i = 1; i < numTriangles + 1; i++ )
-		{
-			const UINT16 iBasePoint = vertices.Num();
-			vertices.Add( basePoint );
-			vertices.Add( face.vertices[ i ] );
-			vertices.Add( face.vertices[ i+1 ] );
-
-			indices.Add( iBasePoint );
-			indices.Add( iBasePoint + 1 );
-			indices.Add( iBasePoint + 2 );
-		}
-#endif
 		iFaceId = face.next;
 	}
 }

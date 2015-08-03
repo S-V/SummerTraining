@@ -495,6 +495,7 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 		float persproj[16];
 		mtxProj(persproj, 60.0f, float(width)/float(height), 0.5f, 1000.0f);
 
+		bgfx::setViewName(RENDER_PASS_GEOMETRY_ID,"FillGBuffer");
 		bgfx::setViewFrameBuffer(RENDER_PASS_GEOMETRY_ID, gbuffer);
 		bgfx::setViewTransform(RENDER_PASS_GEOMETRY_ID, view, persproj);
 
@@ -503,8 +504,11 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 
 		float proj[16];
 		bx::mtxOrtho(proj, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1000.0f);
+		bgfx::setViewName(RENDER_PASS_LIGHT_ID,"LightID");
 		bgfx::setViewTransform(RENDER_PASS_LIGHT_ID,   NULL, proj);
+		bgfx::setViewName(RENDER_PASS_GLOBAL_LIGHT,"GlobalLight");
 		bgfx::setViewTransform(RENDER_PASS_GLOBAL_LIGHT, view, proj);
+		bgfx::setViewName(RENDER_PASS_COMBINE_ID,"CombineID");
 		bgfx::setViewTransform(RENDER_PASS_COMBINE_ID, NULL, proj);
 
 		const float aspectRatio = float(height)/float(width);
@@ -516,8 +520,9 @@ ERet Renderer::BeginFrame( uint32_t _width, uint32_t _height, uint32_t _reset, c
 		bgfx::setViewTransform(RENDER_PASS_DEBUG_LIGHTS_ID, NULL, proj);
 
 
+		bgfx::setViewName(RENDER_PASS_DEBUG_LINES_3D,"DebugLines");
 		bgfx::setViewRect(RENDER_PASS_DEBUG_LINES_3D, 0, 0, width, height);
-		bgfx::setViewClear(RENDER_PASS_DEBUG_LINES_3D, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH|BGFX_CLEAR_STENCIL, 0, 1.0f, 0);
+		//bgfx::setViewClear(RENDER_PASS_DEBUG_LINES_3D, BGFX_CLEAR_COLOR|BGFX_CLEAR_DEPTH|BGFX_CLEAR_STENCIL, 0, 1.0f, 0);
 		bgfx::setViewTransform(RENDER_PASS_DEBUG_LINES_3D, view, persproj);
 	}
 
@@ -990,7 +995,10 @@ void Renderer::Draw(
 		bgfx::setState(0
 			| BGFX_STATE_RGB_WRITE
 			| BGFX_STATE_ALPHA_WRITE
-			| BGFX_STATE_DEPTH_TEST_LEQUAL
+			
+			//| BGFX_STATE_DEPTH_TEST_LEQUAL
+			//| BGFX_STATE_DEPTH_TEST_ALWAYS
+
 			| ToBgfxTopology(topology)
 		);
 

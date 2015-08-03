@@ -343,6 +343,12 @@ public:
 	}
 };
 
+void TriangulateFace(
+					  const Face& face,
+					  TArray< Vertex > &vertices,
+					  TArray< UINT16 > &indices
+					  );
+
 void TriangulateFaces(
 					  const Tree& tree,
 					  const FaceID faces,
@@ -359,6 +365,15 @@ FaceID ClipFacesOutsideBrush(
 								  Tree & treeA, const FaceID facesA,
 								  const Tree& treeB, const NodeID iNodeB
 								 );
+
+EPlaneSide SplitConvexPolygonByPlane(
+	const Vertex* vertices,
+	const int vertexCount,
+	TArray<Vertex> &front,	// valid only if the polygon was split
+	TArray<Vertex> &back,	// valid only if the polygon was split
+	const Vector4& plane,
+	const float epsilon
+	);
 
 namespace Debug
 {
