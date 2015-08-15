@@ -8,10 +8,12 @@
 
 #include <Base/Base.h>
 
-#include <SDL.h>
-#include <SDL_syswm.h>
-#if MX_AUTOLINK
-#pragma comment( lib, "SDL2.lib" )
-#endif //MX_AUTOLINK
+#if defined(TB_USE_SDL)
+	#include <SDL/SDL.h>
+	#include <SDL/SDL_syswm.h>
+	#if MX_AUTOLINK
+	#pragma comment( lib, "SDL2.lib" )
+	#endif //MX_AUTOLINK
+#endif // defined(TB_USE_SDL)
 
 #endif // MX_DRIVER_PCH

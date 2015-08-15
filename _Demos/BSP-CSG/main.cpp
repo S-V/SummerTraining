@@ -5,6 +5,7 @@ https://github.com/299299/NagaGame/blob/master/Source/Game/Engine/Graphics/Debug
 #include <Base/Base.h>
 #include <Base/Util/LogUtil.h>
 #include <Base/Util/Color.h>
+#include <Driver/Windows/ConsoleWindow.h>
 #include "render.h"
 #include "bsp.h"
 #include "csg.h"
@@ -105,20 +106,75 @@ static void GeneratePolygonsR(
 
 		TArray< BSP::Face > frontFaces, backFaces;
 
-
-		BSP::Face coplanar;
+		for( int i = 0; i < _inFaces.Num(); i++ )
 		{
-			BSP::Vertex vertices[4];
-			CreatePolygon(plane, _eyePosition, vertices);
+			const BSP::Face& face = _inFaces[i];
 
-			coplanar.vertices.Add(vertices[0]);
-			coplanar.vertices.Add(vertices[1]);
-			coplanar.vertices.Add(vertices[2]);
-			coplanar.vertices.Add(vertices[3]);
+			const BSP::EPlaneSide side = SplitConvexPolygonByPlane(
+				face.vertices.ToPtr(),
+				face.vertices.Num(),
+				frontPoly,	// valid only if the polygon was split
+				backPoly,	// valid only if the polygon was split
+				plane,
+				0.13f
+			);
+			if( side == BSP::PLANESIDE_CROSS )
+			{
+				Face& newFrontPoly = frontFaces.Add();
+				TSetMany(newFrontPoly.vertices, frontPoly.ToPtr(), frontPoly.Num());
+				Face& newBackPoly = backFaces.Add();
+				TSetMany(newBackPoly.vertices, backPoly.ToPtr(), backPoly.Num());
+			}
+			else if( side == BSP::PLANESIDE_FRONT )
+			{
+				Face& newFrontPoly = frontFaces.Add();
+				TSetMany(newFrontPoly.vertices, frontPoly.ToPtr(), frontPoly.Num());
+			}
+			else if( side == BSP::PLANESIDE_BACK )
+			{
+				Face& newBackPoly = backFaces.Add();
+				TSetMany(newBackPoly.vertices, backPoly.ToPtr(), backPoly.Num());
+			}
+			else
+			{
+				//_outFaces.Add(face);
+				//frontFaces.Add(face);
+				//backFaces.Add(face);
+			}
 		}
 
-		frontFaces.Add(coplanar);
-		backFaces.Add(coplanar);
+		GeneratePolygonsR(_tree, node.front, _eyePosition, frontFaces, _outFaces);
+		GeneratePolygonsR(_tree, node.back, _eyePosition, backFaces, _outFaces);
+	}
+	else if( IS_SOLID_LEAF(_node) )
+	{
+		TAppend(_outFaces, _inFaces );
+	}
+}
+
+static void GeneratePolygonsR2(
+							 const BSP::Tree& _tree,
+							 const BSP::NodeID _node,
+							 const Float3& _eyePosition,
+							 const TArray< BSP::Face >& _inFaces,
+							 TArray< BSP::Face >& _outFaces
+							 )
+{
+	using namespace BSP;
+	if( IS_INTERNAL(_node) )
+	{
+		const Node& node = _tree.m_nodes[ _node ];
+		const Vector4& plane = _tree.m_planes[ node.plane ];
+
+		Vertex	buffer1[64];
+		Vertex	buffer2[64];
+
+		TArray< Vertex > frontPoly;
+		TArray< Vertex > backPoly;
+		frontPoly.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
+		backPoly.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+
+		TArray< BSP::Face > frontFaces, backFaces;
 
 		for( int i = 0; i < _inFaces.Num(); i++ )
 		{
@@ -149,10 +205,16 @@ static void GeneratePolygonsR(
 				Face& newBackPoly = backFaces.Add();
 				TSetMany(newBackPoly.vertices, backPoly.ToPtr(), backPoly.Num());
 			}
+			else
+			{
+				//_outFaces.Add(face);
+				//frontFaces.Add(face);
+				backFaces.Add(face);
+			}
 		}
 
-		GeneratePolygonsR(_tree, node.front, _eyePosition, frontFaces, _outFaces);
-		GeneratePolygonsR(_tree, node.back, _eyePosition, backFaces, _outFaces);
+		GeneratePolygonsR2(_tree, node.front, _eyePosition, frontFaces, _outFaces);
+		GeneratePolygonsR2(_tree, node.back, _eyePosition, backFaces, _outFaces);
 	}
 	else if( IS_SOLID_LEAF(_node) )
 	{
@@ -172,13 +234,34 @@ static void GeneratePolygons(
 	_indices.Empty();
 
 	TArray< BSP::Face > inFaces, outFaces;
-	GeneratePolygonsR(_tree,_start,_cameraPosition, inFaces,outFaces);
+
+	for( UINT32 iPlane = 0; iPlane < _tree.m_planes.Num(); iPlane++ )
+	{
+		const Vector4& plane = _tree.m_planes[ iPlane ];
+
+		//Plane_PointDistance()
+
+		BSP::Vertex vertices[4];
+		CreatePolygon( plane, _cameraPosition, vertices );
+
+		inFaces.Empty();
+
+		BSP::Face &newFace = inFaces.Add();
+		newFace.vertices.Add(vertices[0]);
+		newFace.vertices.Add(vertices[1]);
+		newFace.vertices.Add(vertices[2]);
+		newFace.vertices.Add(vertices[3]);
+
+//		GeneratePolygonsR2(_tree,_start,_cameraPosition, inFaces,outFaces);
+	}
+
+	GeneratePolygonsR2(_tree,_start,_cameraPosition, inFaces,outFaces);
 
 	for( int i = 0; i < outFaces.Num(); i++ )
 	{
 		const BSP::Face& face = outFaces[i];
 		if(face.vertices.Num())
-		TriangulateFace( face, _vertices, _indices );
+			TriangulateFace( face, _vertices, _indices );
 	}
 }
 
@@ -194,6 +277,7 @@ ERet MyEntryPoint()
 	SetupBaseUtil	setupBase;
 	FileLogUtil		fileLog;
 	SetupCoreUtil	setupCore;
+	CConsole		consoleWindow;
 
 	DBGOUT("sizeof(Node)=%d, sizeof(Face)=%d", sizeof(BSP::Node), sizeof(BSP::Face));
 

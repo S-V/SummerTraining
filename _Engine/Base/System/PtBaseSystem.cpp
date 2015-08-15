@@ -39,10 +39,26 @@ public:
 	{}
 };
 
+class PrintfOutput : public ALog
+{
+public:
+	virtual void VWrite( ELogLevel _level, const char* _message, int _length ) override
+	{
+		mxUNUSED(_level);
+		mxASSERT(_length > 0);
+		// make sure that the string is null-terminated
+		mxASSERT(_message[_length] == '\0');		
+		::puts(_message);
+	}
+	virtual void VWriteLinePrefix( ELogLevel _level, const char* _prefix, int _length ) override
+	{}
+};
+
 class LogManager : public ALogManager, SingleInstance< LogManager >
 {
 	ALog *				m_loggers;
-	MSVCppDebugOutput	m_nativeOutput;
+	PrintfOutput		m_printfOutput;
+	MSVCppDebugOutput	m_nativeOutput;	
 	SpinWait			m_criticalSection;
 	THREAD_ID			m_mainThreadId;
 	ELogLevel			m_threshhold;
@@ -76,6 +92,7 @@ public:
 	LogManager()
 	{
 		m_loggers = nil;
+		m_printfOutput.PrependSelfToList(&m_loggers);
 		m_nativeOutput.PrependSelfToList(&m_loggers);
 		m_criticalSection.Initialize();
 		m_mainThreadId = ptGetMainThreadID();

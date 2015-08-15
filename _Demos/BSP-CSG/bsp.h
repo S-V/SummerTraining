@@ -158,6 +158,7 @@ inline bool IS_EMPTY_LEAF( NodeID nodeID ) {
 
 enum { NIL_INDEX = (UINT16)~0 };
 
+//NOTE: lower 14 bits of a leaf index may contain additional information (e.g. material ID)
 struct Node : public CStruct
 {
 	UINT16	plane;	//«2 Hyperplane of the node (index into array of planes).

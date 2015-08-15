@@ -9,6 +9,8 @@ source code:
 CSGTOOL is a library, Ruby Gem and command line tool for performing Constructive Solid Geometry operations on STL Files using 3D BSP Trees.
 https://github.com/sshirokov/csgtool
 
+https://github.com/spiked3/CnCgo7/blob/master/CnCgo7/Math/Bsp2.cs
+
 Papers:
 Efficient Boundary Extraction of BSP Solids Based on Clipping Operations
 
