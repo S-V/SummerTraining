@@ -650,6 +650,7 @@ const Float4 Plane_FromPointNormal( const Float3& point, const Float3& normal );
 const Float3 Plane_CalculateNormal( const Float4& plane );
 const Float3& Plane_GetNormal( const Float4& plane );
 const float Plane_PointDistance( const Float4& plane, const Float3& point );
+const bool Plane_ContainsPoint( const Float4& plane, const Float3& point, float epsilon );
 const Float4 Plane_Translate( const Float4& plane, const Float3& translation );
 
 //=====================================================================

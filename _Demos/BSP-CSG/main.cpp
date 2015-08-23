@@ -41,8 +41,86 @@ const Float3 Plane_Project( const Float4& plane, const Float3& point )
 	mxASSERT(Float3_IsNormalized( N ));
 	return point - N * Plane_PointDistance( plane, point );
 }
+#if 0
+bool IsPointInsidePlanes( const b3AlignedObjectArray<b3Vector3>& planeEquations, const b3Vector3& point, b3Scalar margin )
+{
+	int numbrushes = planeEquations.size();
+	for (int i=0;i<numbrushes;i++)
+	{
+		const b3Vector3& N1 = planeEquations[i];
+		b3Scalar dist = b3Scalar(N1.dot(point))+b3Scalar(N1[3])-margin;
+		if (dist>b3Scalar(0.))
+		{
+			return false;
+		}
+	}
+	return true;
+		
+}
 
-static void CreatePolygon( const Vector4& plane, const Float3& _eyePosition, BSP::Vertex vertices[4] )
+void	b3GeometryUtil::getVerticesFromPlaneEquations(const b3AlignedObjectArray<b3Vector3>& planeEquations , b3AlignedObjectArray<b3Vector3>& verticesOut )
+{
+	const int numbrushes = planeEquations.size();
+	// brute force:
+	for (int i=0;i<numbrushes;i++)
+	{
+		const b3Vector3& N1 = planeEquations[i];
+		
+
+		for (int j=i+1;j<numbrushes;j++)
+		{
+			const b3Vector3& N2 = planeEquations[j];
+				
+			for (int k=j+1;k<numbrushes;k++)
+			{
+
+				const b3Vector3& N3 = planeEquations[k];
+
+				b3Vector3 n2n3; n2n3 = N2.cross(N3);
+				b3Vector3 n3n1; n3n1 = N3.cross(N1);
+				b3Vector3 n1n2; n1n2 = N1.cross(N2);
+				
+				if ( ( n2n3.length2() > b3Scalar(0.0001) ) &&
+					 ( n3n1.length2() > b3Scalar(0.0001) ) &&
+					 ( n1n2.length2() > b3Scalar(0.0001) ) )
+				{
+					//point P out of 3 plane equations:
+
+					//	d1 ( N2 * N3 ) + d2 ( N3 * N1 ) + d3 ( N1 * N2 )  
+					//P =  -------------------------------------------------------------------------  
+					//   N1 . ( N2 * N3 )  
+
+
+					b3Scalar quotient = (N1.dot(n2n3));
+					if (b3Fabs(quotient) > b3Scalar(0.000001))
+					{
+						quotient = b3Scalar(-1.) / quotient;
+						n2n3 *= N1[3];
+						n3n1 *= N2[3];
+						n1n2 *= N3[3];
+						b3Vector3 potentialVertex = n2n3;
+						potentialVertex += n3n1;
+						potentialVertex += n1n2;
+						potentialVertex *= quotient;
+
+						//check if inside, and replace supportingVertexOut if needed
+						if (isPointInsidePlanes(planeEquations,potentialVertex,b3Scalar(0.01)))
+						{
+							verticesOut.push_back(potentialVertex);
+						}
+					}
+				}
+			}
+		}
+	}
+}
+#endif
+// creates a polygon (quad) lying in the specified plane
+static void CreatePolygon(
+						  const Vector4& plane,
+						  const Float3& _eyePosition,
+						  BSP::Vertex vertices[4]
+)
 {
 	const Float3 normal = Plane_GetNormal(plane);
 	const Float3 axis2 = Float3_Normalized(Float3_FindOrthogonalTo(normal));
@@ -51,20 +129,25 @@ static void CreatePolygon( const Vector4& plane, const Float3& _eyePosition, BSP
 
 	const Float3 center = Plane_Project(plane, _eyePosition);
 
-	const Float3 right = axis1 * size;
-	const Float3 up = axis2 * size;
-	const Float3 left = right * -1.0f;
-	const Float3 down = up * -1.0f;
+	const Float3 right	= axis1 * size;
+	const Float3 up		= axis2 * size;
+	const Float3 left	= right * -1.0f;
+	const Float3 down	= up * -1.0f;
 
 	BSP::Vertex &lowerLeft = vertices[0];
 	BSP::Vertex &upperLeft = vertices[1];
 	BSP::Vertex &upperRight = vertices[2];
 	BSP::Vertex &lowerRight = vertices[3];
 
-	lowerLeft.xyz = left + down;
-	upperLeft.xyz = left + up;
-	upperRight.xyz = right + up;
-	lowerRight.xyz = right + down;
+	lowerLeft.xyz	= center + left + down;
+	upperLeft.xyz	= center + left + up;
+	upperRight.xyz	= center + right + up;
+	lowerRight.xyz	= center + right + down;
+
+	mxASSERT(Plane_ContainsPoint(plane, lowerLeft.xyz, 0.1f));
+	mxASSERT(Plane_ContainsPoint(plane, upperLeft.xyz, 0.1f));
+	mxASSERT(Plane_ContainsPoint(plane, upperRight.xyz, 0.1f));
+	mxASSERT(Plane_ContainsPoint(plane, lowerRight.xyz, 0.1f));
 
 	lowerLeft.N = PackNormal(normal).v;
 	upperLeft.N = PackNormal(normal).v;
@@ -186,7 +269,7 @@ static void GeneratePolygonsR2(
 				frontPoly,	// valid only if the polygon was split
 				backPoly,	// valid only if the polygon was split
 				plane,
-				0.13f
+				0.1f
 			);
 			if( side == BSP::PLANESIDE_CROSS )
 			{
@@ -222,6 +305,90 @@ static void GeneratePolygonsR2(
 	}
 }
 
+static void ClipPolygon(
+						const BSP::Tree& _tree,
+						const BSP::NodeID _node,
+						const BSP::PlaneID _plane,
+						//const BSP::Face& _polygon,
+						//TArray< BSP::Face >& _faces
+						const TArray< BSP::Face >& _inFaces,
+						TArray< BSP::Face >& _outFaces
+						)
+{
+	using namespace BSP;
+	if( IS_INTERNAL(_node) )
+	{
+		const Node& node = _tree.m_nodes[ _node ];
+
+		if( node.plane == _plane )
+		{
+			// all input faces lie in this plane
+			ClipPolygon(_tree, node.front, _plane, _inFaces, _outFaces);
+			ClipPolygon(_tree, node.back, _plane, _inFaces, _outFaces);
+		}
+		else
+		{
+			const Vector4& plane = _tree.m_planes[ node.plane ];
+
+			Vertex	buffer1[64];
+			Vertex	buffer2[64];
+
+			TArray< Vertex > frontPoly;
+			TArray< Vertex > backPoly;
+			frontPoly.SetExternalStorage( buffer1, mxCOUNT_OF(buffer1) );
+			backPoly.SetExternalStorage( buffer2, mxCOUNT_OF(buffer2) );
+
+			TArray< BSP::Face > frontFaces, backFaces;
+
+			for( int i = 0; i < _inFaces.Num(); i++ )
+			{
+				const BSP::Face& face = _inFaces[i];
+
+				const BSP::EPlaneSide side = SplitConvexPolygonByPlane(
+					face.vertices.ToPtr(),
+					face.vertices.Num(),
+					frontPoly,	// valid only if the polygon was split
+					backPoly,	// valid only if the polygon was split
+					plane,
+					0.13f
+					);
+				if( side == BSP::PLANESIDE_CROSS )
+				{
+					//Face& newFrontPoly = frontFaces.Add();
+					//TSetMany(newFrontPoly.vertices, frontPoly.ToPtr(), frontPoly.Num());
+					Face& newBackPoly = backFaces.Add();
+					TSetMany(newBackPoly.vertices, backPoly.ToPtr(), backPoly.Num());
+				}
+				else if( side == BSP::PLANESIDE_FRONT )
+				{
+					//Face& newFrontPoly = frontFaces.Add();
+					//TSetMany(newFrontPoly.vertices, frontPoly.ToPtr(), frontPoly.Num());
+				}
+				else if( side == BSP::PLANESIDE_BACK )
+				{
+					Face& newBackPoly = backFaces.Add();
+					TSetMany(newBackPoly.vertices, backPoly.ToPtr(), backPoly.Num());
+				}
+				else
+				{
+					//mxUNREACHABLE;
+					// all input faces lie in this plane
+					//ClipPolygon(_tree, node.front, _plane, _inFaces, _outFaces);
+					//ClipPolygon(_tree, node.back, _plane, _inFaces, _outFaces);
+					return;
+				}
+			}
+			ClipPolygon(_tree, node.front, _plane, _inFaces, _outFaces);
+			ClipPolygon(_tree, node.back, _plane, _inFaces, _outFaces);
+		}
+	}
+	else if( IS_SOLID_LEAF(_node) )
+	{
+		TAppend(_outFaces, _inFaces );
+	}
+}
+
+// Generates a boundary representation from the given tree.
 static void GeneratePolygons(
 							 const BSP::Tree& _tree,
 							 const BSP::NodeID _start,
@@ -239,23 +406,31 @@ static void GeneratePolygons(
 	{
 		const Vector4& plane = _tree.m_planes[ iPlane ];
 
-		//Plane_PointDistance()
-
 		BSP::Vertex vertices[4];
 		CreatePolygon( plane, _cameraPosition, vertices );
 
-		inFaces.Empty();
+		BSP::Face face;
+		face.vertices.Add(vertices[0]);
+		face.vertices.Add(vertices[1]);
+		face.vertices.Add(vertices[2]);
+		face.vertices.Add(vertices[3]);
 
-		BSP::Face &newFace = inFaces.Add();
-		newFace.vertices.Add(vertices[0]);
-		newFace.vertices.Add(vertices[1]);
-		newFace.vertices.Add(vertices[2]);
-		newFace.vertices.Add(vertices[3]);
+		TArray< BSP::Face > temp;
+		temp.Add(face);
+		ClipPolygon(_tree,0,iPlane,temp, outFaces);
+
+		//inFaces.Empty();
+
+		//BSP::Face &newFace = inFaces.Add();
+		//newFace.vertices.Add(vertices[0]);
+		//newFace.vertices.Add(vertices[1]);
+		//newFace.vertices.Add(vertices[2]);
+		//newFace.vertices.Add(vertices[3]);
 
 //		GeneratePolygonsR2(_tree,_start,_cameraPosition, inFaces,outFaces);
 	}
 
-	GeneratePolygonsR2(_tree,_start,_cameraPosition, inFaces,outFaces);
+	//GeneratePolygonsR2(_tree,_start,_cameraPosition, inFaces,outFaces);
 
 	for( int i = 0; i < outFaces.Num(); i++ )
 	{
@@ -313,11 +488,11 @@ ERet MyEntryPoint()
 	mxDO(csg.Initialize());
 
 
-	//csg.RunTestCode();
+	csg.RunTestCode();
 //csg.UpdateRenderMesh(csg.worldTree);
 	BSP::Debug::PrintTree(csg.worldTree);
-GeneratePolygons(csg.worldTree, 0, Float3_Zero(), csg.vertices, csg.indices);
-csg.UpdateRenderMesh(csg.vertices, csg.indices);
+//GeneratePolygons(csg.worldTree, 0, Float3_Zero(), csg.vertices, csg.indices);
+//csg.UpdateRenderMesh(csg.vertices, csg.indices);
 
 	int fireRate = 10; // shots per second
 	int64_t lastTimeShot = 0;
@@ -616,6 +791,19 @@ csg.UpdateRenderMesh(csg.vertices, csg.indices);
 
 		debugDraw.DrawAxes(100);
 
+		{
+			const int numTriangles = csg.indices.Num() / 3;
+			for( int i = 0; i < numTriangles; i++ )
+			{
+				UINT16 * tri = csg.indices.ToPtr() + i*3;
+				const BSP::Vertex& a = csg.vertices[ tri[0] ];
+				const BSP::Vertex& b = csg.vertices[ tri[1] ];
+				const BSP::Vertex& c = csg.vertices[ tri[2] ];
+				debugDraw.DrawWireTriangle( a.xyz, b.xyz, c.xyz );
+			}			
+		}
+
+
 		debugDraw.Flush();
 
 		renderer.EndFrame();
@@ -638,8 +826,13 @@ csg.UpdateRenderMesh(csg.vertices, csg.indices);
 
 				csg.Shoot( rayPos, rayDir, lastHit );
 
-				GeneratePolygons(csg.worldTree, 0, Float3_Zero(), csg.vertices, csg.indices);
-csg.UpdateRenderMesh(csg.vertices, csg.indices);
+		DBGOUT("\nBSP tree after CSG:\n");
+		BSP::Debug::PrintTree(csg.worldTree);
+
+//GeneratePolygons(csg.worldTree, 0, Float3_Zero(), csg.vertices, csg.indices);
+//csg.UpdateRenderMesh(csg.vertices, csg.indices);
+
+
 
 //				worldTree.CastRay( rayPos, rayDir, lastHit );
 //				if( lastHit.hitAnything )

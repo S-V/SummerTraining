@@ -130,6 +130,7 @@ enum NODE_TYPE
 
 typedef UINT16 NodeID;	//« upper two bits describe the type of the node
 typedef UINT16 FaceID;
+typedef UINT16 PlaneID;
 
 
 inline bool IS_LEAF( NodeID nodeID ) {

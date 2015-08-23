@@ -93,9 +93,9 @@ void CSG::Shutdown()
 
 void CSG::RunTestCode()
 {
-	DBGOUT("\nPolygons before CSG:\n");
-	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
-#if 0
+//	DBGOUT("\nPolygons before CSG:\n");
+//	BSP::Debug::PrintFaceList(worldTree, worldTree.m_nodes[0].faces);
+#if 1
 	{
 		Float3 pos = Float3_Set(40,0,20);
 #if 1
@@ -106,12 +106,12 @@ void CSG::RunTestCode()
 		//	temporary1
 		//	);
 
-		MakeBoxMesh( 50.0f, 10.0f, 50.0f, vertices, indices );
-		Build_BSP_Tree( vertices, indices, worldTree );
+		//MakeBoxMesh( 50.0f, 10.0f, 50.0f, vertices, indices );
+		//Build_BSP_Tree( vertices, indices, worldTree );
 
 		BSP::Tree subtractiveModel;
-		//MakeBoxMesh( 70.0f, 200.0f, 70.0f, vertices, indices );
-		MakeBoxMesh( 20.0f, 50.0f, 10.0f, vertices, indices );
+		MakeBoxMesh( 70.0f, 200.0f, 70.0f, vertices, indices );
+		//MakeBoxMesh( 20.0f, 50.0f, 10.0f, vertices, indices );
 		FlipWinding( vertices, indices );
 		Build_BSP_Tree( vertices, indices, subtractiveModel );
 
@@ -120,10 +120,10 @@ void CSG::RunTestCode()
 		worldTree.Subtract2( temporary1, temporary2 );
 
 
-		subtractiveModel.Translate(Float3_Set(10,0,10));
-		temporary1.CopyFrom( subtractiveModel );
-		temporary2.CopyFrom( subtractiveModel );
-		worldTree.Subtract2( temporary1, temporary2 );
+		//subtractiveModel.Translate(Float3_Set(10,0,10));
+		//temporary1.CopyFrom( subtractiveModel );
+		//temporary2.CopyFrom( subtractiveModel );
+		//worldTree.Subtract2( temporary1, temporary2 );
 
 
 #else
@@ -234,7 +234,6 @@ void CSG::Shoot(
 	if( result.hitAnything )
 	{
 		LogStream(LL_Info) << "Hit pos: " << result.position;
-
 		Subtract(
 			result.position,
 			worldTree,

@@ -212,6 +212,11 @@ inline const float Plane_PointDistance( const Float4& plane, const Float3& point
 {
 	return plane.x * point.x + plane.y * point.y + plane.z * point.z + plane.w;
 }
+inline const bool Plane_ContainsPoint( const Float4& plane, const Float3& point, float epsilon )
+{
+	const float distance = Plane_PointDistance( plane, point );
+	return distance >= -epsilon && distance <= +epsilon;
+}
 inline const Float4 Plane_Translate( const Float4& plane, const Float3& translation )
 {
 	Float4 result = plane;
